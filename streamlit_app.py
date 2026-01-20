@@ -26,12 +26,10 @@ from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 st.set_page_config(page_title="OpenAIgi | Revenue Dashboard", layout="wide")
 
 # -----------------------------
-# Oregon Tech brand colors
+# Color Pallette
 # -----------------------------
 OT_BLUE = "#003767"
 OT_GOLD = "#FFD24F"
-
-# Industry & Donor-focused palette
 OT_LAVENDER = "#7474C1"
 OT_SEA_GREEN = "#007B5F"
 OT_PEACOCK = "#00677F"
