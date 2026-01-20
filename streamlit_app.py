@@ -5,10 +5,12 @@
 # Expects:
 #   ./data/gdp_data.csv
 #
-# Note:
-#   Predictive modeling uses scikit-learn. Install:
-#     pip install scikit-learn
-#   or add "scikit-learn" to requirements.txt
+# Add to requirements.txt:
+#   streamlit
+#   pandas
+#   numpy
+#   scikit-learn
+#   altair
 
 from __future__ import annotations
 
@@ -16,17 +18,76 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
+import altair as alt
 
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 
-st.set_page_config(page_title="Revenue Dashboard", layout="wide")
+st.set_page_config(page_title="Oregon Tech | Revenue Dashboard", layout="wide")
 
-# ✅ Template-style data load
+# -----------------------------
+# Oregon Tech brand colors
+# -----------------------------
+OT_BLUE = "#003767"
+OT_GOLD = "#FFD24F"
+
+# Industry & Donor-focused palette
+OT_LAVENDER = "#7474C1"
+OT_SEA_GREEN = "#007B5F"
+OT_PEACOCK = "#00677F"
+OT_BRASS = "#AC8400"
+OT_BURGUNDY = "#8F3237"
+
+CHART_PALETTE = [OT_BLUE, OT_SEA_GREEN, OT_PEACOCK, OT_LAVENDER, OT_BRASS, OT_BURGUNDY, OT_GOLD]
+
+# Apply Altair theme / palette
+alt.themes.enable("default")
+OT_SCALE = alt.Scale(range=CHART_PALETTE)
+
+# -----------------------------
+# Light CSS polish (optional)
+# -----------------------------
+st.markdown(
+    f"""
+    <style>
+      /* Header accent */
+      h1, h2, h3 {{
+        color: {OT_BLUE};
+      }}
+
+      /* Sidebar headings */
+      section[data-testid="stSidebar"] h2, 
+      section[data-testid="stSidebar"] h3 {{
+        color: {OT_BLUE};
+      }}
+
+      /* Metric label color */
+      div[data-testid="stMetricLabel"] {{
+        color: {OT_BLUE};
+      }}
+
+      /* Small gold accent line under title */
+      .ot-accent {{
+        height: 6px;
+        width: 160px;
+        background: {OT_GOLD};
+        border-radius: 99px;
+        margin: 0.25rem 0 1rem 0;
+      }}
+    </style>
+
+    <div class="ot-accent"></div>
+    """,
+    unsafe_allow_html=True,
+)
+
+# -----------------------------
+# Data load (template style)
+# -----------------------------
 DATA_FILENAME = Path(__file__).parent / "data/gdp_data.csv"
 raw_gdp_df = pd.read_csv(DATA_FILENAME)
 
-# ✅ Clean column headers (handles BOM + whitespace)
+# Clean column headers (BOM + whitespace)
 raw_gdp_df.columns = raw_gdp_df.columns.str.replace("\ufeff", "", regex=False).str.strip()
 
 
@@ -52,7 +113,6 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
             + f"\n\nColumns found: {list(df.columns)}"
         )
 
-    # Parse Month (YYYY-MM)
     df["Month"] = pd.to_datetime(df["Month"], format="%Y-%m", errors="coerce")
     if df["Month"].isna().any():
         bad = df.loc[df["Month"].isna(), ["Month"]].head(10)
@@ -61,12 +121,10 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
             f"Examples (first 10):\n{bad.to_string(index=False)}"
         )
 
-    # Clean numeric columns (handles commas/$/%)
     numeric_cols = [c for c in df.columns if c != "Month"]
     for c in numeric_cols:
         df[c] = (
-            df[c]
-            .astype(str)
+            df[c].astype(str)
             .str.replace(",", "", regex=False)
             .str.replace("$", "", regex=False)
             .str.replace("%", "", regex=False)
@@ -79,10 +137,10 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     # Derived metrics
     df["Net_Customers"] = df["New_Customers"] - df["Churned_Customers"]
     df["Gross_Profit_USD"] = df["Total_Revenue_USD"] * (df["Gross_Margin_%"] / 100.0)
+
     df["Total_Revenue_MoM_%"] = df["Total_Revenue_USD"].pct_change() * 100.0
     df["Total_Revenue_YoY_%"] = df["Total_Revenue_USD"].pct_change(12) * 100.0
 
-    # Revenue mix
     df["Subscription_Share_%"] = np.where(
         df["Total_Revenue_USD"] > 0,
         (df["Subscription_Revenue_USD"] / df["Total_Revenue_USD"]) * 100.0,
@@ -113,13 +171,6 @@ def fit_forecast(
     alpha: float = 1.0,
     test_months: int = 12,
 ) -> tuple[pd.DataFrame, dict]:
-    """
-    Ridge regression forecast using time trend + monthly seasonality.
-    Backtest on last `test_months` observations (if available).
-    Returns:
-      forecast_df: Month, Actual, Fitted, Forecast
-      metrics: MAE, MAPE (if possible)
-    """
     d = d.dropna(subset=["Month", target_col]).copy()
     d = make_time_features(d)
 
@@ -128,7 +179,7 @@ def fit_forecast(
     y = d[target_col]
 
     n = len(d)
-    test_size = min(test_months, max(0, n // 4))  # cap at 12-ish; avoid tiny train
+    test_size = min(test_months, max(0, n // 4))
     train_end = n - test_size if test_size > 0 else n
 
     model = Ridge(alpha=alpha)
@@ -136,14 +187,8 @@ def fit_forecast(
 
     fitted = model.predict(X)
 
-    # Future months
     last_month = d["Month"].max()
-    future_months = pd.date_range(
-        last_month + pd.offsets.MonthBegin(1),
-        periods=horizon,
-        freq="MS",
-    )
-
+    future_months = pd.date_range(last_month + pd.offsets.MonthBegin(1), periods=horizon, freq="MS")
     future = pd.DataFrame({"Month": future_months})
     future["t"] = np.arange(n, n + horizon)
     m = future["Month"].dt.month.astype(int)
@@ -152,7 +197,6 @@ def fit_forecast(
 
     y_fore = model.predict(future[feature_cols])
 
-    # Output DF
     hist_out = d[["Month", target_col]].rename(columns={target_col: "Actual"}).copy()
     hist_out["Fitted"] = fitted
     hist_out["Forecast"] = np.nan
@@ -163,37 +207,85 @@ def fit_forecast(
 
     forecast_df = pd.concat([hist_out, fut_out], ignore_index=True)
 
-    # Backtest metrics
-    metrics: dict = {}
+    metrics: dict = {"Backtest_Months": int(test_size)}
     if test_size > 0:
         y_true = y.iloc[train_end:]
         y_pred = pd.Series(fitted[train_end:], index=y_true.index)
-
         metrics["MAE"] = float(mean_absolute_error(y_true, y_pred))
-
-        # MAPE isn't defined well with zeros
-        if (y_true == 0).any():
-            metrics["MAPE"] = None
-        else:
-            metrics["MAPE"] = float(mean_absolute_percentage_error(y_true, y_pred) * 100.0)
-
-        metrics["Backtest_Months"] = int(test_size)
-    else:
-        metrics["Backtest_Months"] = 0
+        metrics["MAPE"] = None if (y_true == 0).any() else float(mean_absolute_percentage_error(y_true, y_pred) * 100.0)
 
     return forecast_df, metrics
 
 
+def money_fmt(x):
+    return f"${x:,.0f}" if pd.notna(x) else "—"
+
+
+def pct_fmt(x):
+    return f"{x:,.2f}%" if pd.notna(x) else "—"
+
+
+def altair_multiline(df_in: pd.DataFrame, x_col: str, y_cols: list[str], title: str, y_title: str = ""):
+    long = df_in[[x_col] + y_cols].melt(id_vars=[x_col], var_name="Series", value_name="Value")
+    chart = (
+        alt.Chart(long)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X(f"{x_col}:T", title="Month"),
+            y=alt.Y("Value:Q", title=y_title),
+            color=alt.Color("Series:N", scale=OT_SCALE, legend=alt.Legend(title="")),
+            tooltip=[alt.Tooltip(f"{x_col}:T", title="Month"), "Series:N", alt.Tooltip("Value:Q", format=",.2f")],
+        )
+        .properties(title=title, height=320)
+        .interactive()
+    )
+    return chart
+
+
+def altair_area_stacked(df_in: pd.DataFrame, x_col: str, cols: list[str], title: str, y_title: str = ""):
+    long = df_in[[x_col] + cols].melt(id_vars=[x_col], var_name="Series", value_name="Value")
+    chart = (
+        alt.Chart(long)
+        .mark_area(opacity=0.9)
+        .encode(
+            x=alt.X(f"{x_col}:T", title="Month"),
+            y=alt.Y("Value:Q", stack="zero", title=y_title),
+            color=alt.Color("Series:N", scale=OT_SCALE, legend=alt.Legend(title="")),
+            tooltip=[alt.Tooltip(f"{x_col}:T", title="Month"), "Series:N", alt.Tooltip("Value:Q", format=",.0f")],
+        )
+        .properties(title=title, height=320)
+        .interactive()
+    )
+    return chart
+
+
+def altair_bar_grouped(df_in: pd.DataFrame, x_col: str, cols: list[str], title: str, y_title: str = ""):
+    long = df_in[[x_col] + cols].melt(id_vars=[x_col], var_name="Series", value_name="Value")
+    chart = (
+        alt.Chart(long)
+        .mark_bar()
+        .encode(
+            x=alt.X(f"{x_col}:T", title="Month"),
+            xOffset=alt.XOffset("Series:N"),
+            y=alt.Y("Value:Q", title=y_title),
+            color=alt.Color("Series:N", scale=OT_SCALE, legend=alt.Legend(title="")),
+            tooltip=[alt.Tooltip(f"{x_col}:T", title="Month"), "Series:N", alt.Tooltip("Value:Q", format=",.0f")],
+        )
+        .properties(title=title, height=320)
+        .interactive()
+    )
+    return chart
+
+
 # -----------------------------
-# Load + Clean
+# App
 # -----------------------------
 df = clean_data(raw_gdp_df)
 
-# -----------------------------
-# Sidebar Filters
-# -----------------------------
-st.sidebar.title("Filters")
+st.title("Revenue & Customer Trends Dashboard")
 
+# Sidebar
+st.sidebar.title("Filters")
 min_date = df["Month"].min()
 max_date = df["Month"].max()
 
@@ -232,45 +324,26 @@ selected_metrics = st.sidebar.multiselect(
 
 show_table = st.sidebar.checkbox("Show Data Table", value=True)
 
-# -----------------------------
-# Header + KPIs
-# -----------------------------
-st.title("Revenue & Customer Trends Dashboard")
-
+# KPIs
 latest = fdf.iloc[-1] if len(fdf) else df.iloc[-1]
 prev = fdf.iloc[-2] if len(fdf) >= 2 else None
 
-
-def money_fmt(x):
-    return f"${x:,.0f}" if pd.notna(x) else "—"
-
-
-def pct_fmt(x):
-    return f"{x:,.2f}%" if pd.notna(x) else "—"
-
-
 k1, k2, k3, k4 = st.columns(4)
-
 k1.metric(
     "Total Revenue (Latest)",
     money_fmt(latest["Total_Revenue_USD"]),
-    None
-    if prev is None or prev["Total_Revenue_USD"] in (0, np.nan)
-    else pct_fmt((latest["Total_Revenue_USD"] / prev["Total_Revenue_USD"] - 1) * 100.0),
+    None if prev is None else pct_fmt((latest["Total_Revenue_USD"] / prev["Total_Revenue_USD"] - 1) * 100.0),
 )
-
 k2.metric(
     "Gross Margin (Latest)",
     pct_fmt(latest["Gross_Margin_%"]),
     None if prev is None else pct_fmt(latest["Gross_Margin_%"] - prev["Gross_Margin_%"]),
 )
-
 k3.metric(
     "New Customers (Latest)",
     f"{int(latest['New_Customers']):,}",
     None if prev is None else f"{int(latest['New_Customers'] - prev['New_Customers']):,}",
 )
-
 k4.metric(
     "Net Customers (Latest)",
     f"{int(latest['Net_Customers']):,}",
@@ -279,34 +352,44 @@ k4.metric(
 
 st.divider()
 
-# -----------------------------
-# Charts
-# -----------------------------
+# Charts (branded)
 st.subheader("Revenue Breakdown Over Time")
-rev_df = fdf.set_index("Month")[["Subscription_Revenue_USD", "API_Revenue_USD"]]
-st.area_chart(rev_df, use_container_width=True)
+st.altair_chart(
+    altair_area_stacked(
+        fdf, "Month",
+        ["Subscription_Revenue_USD", "API_Revenue_USD"],
+        "Subscription vs API Revenue",
+        "Revenue (USD)"
+    ),
+    use_container_width=True
+)
 
 st.subheader("Selected Metrics (Line Chart)")
 if selected_metrics:
-    chart_df = fdf.set_index("Month")[selected_metrics]
-    st.line_chart(chart_df, use_container_width=True)
+    st.altair_chart(
+        altair_multiline(fdf, "Month", selected_metrics, "Trends Over Time"),
+        use_container_width=True
+    )
 else:
     st.info("Select at least one metric in the sidebar to display the line chart.")
 
 st.subheader("Customer Movement")
-cust_df = fdf.set_index("Month")[["New_Customers", "Churned_Customers", "Net_Customers"]]
-st.bar_chart(cust_df, use_container_width=True)
+st.altair_chart(
+    altair_bar_grouped(
+        fdf, "Month",
+        ["New_Customers", "Churned_Customers", "Net_Customers"],
+        "New vs Churned vs Net Customers",
+        "Customers"
+    ),
+    use_container_width=True
+)
 
-# -----------------------------
-# Data Table
-# -----------------------------
+# Table
 if show_table:
     st.subheader("Filtered Data Table")
     st.dataframe(fdf, use_container_width=True, hide_index=True)
 
-# -----------------------------
-# Predictive Modeling
-# -----------------------------
+# Predictive modeling
 st.divider()
 st.header("Predictive Modeling (Forecast)")
 
@@ -326,9 +409,9 @@ target = st.selectbox(
     index=0,
 )
 
-horizon = st.slider("Forecast horizon (months)", min_value=3, max_value=24, value=6)
-alpha = st.slider("Model regularization (alpha)", min_value=0.1, max_value=50.0, value=1.0)
-test_months = st.slider("Backtest window (months)", min_value=0, max_value=24, value=12)
+horizon = st.slider("Forecast horizon (months)", 3, 24, 6)
+alpha = st.slider("Model regularization (alpha)", 0.1, 50.0, 1.0)
+test_months = st.slider("Backtest window (months)", 0, 24, 12)
 
 forecast_df, metrics = fit_forecast(df, target_col=target, horizon=horizon, alpha=alpha, test_months=test_months)
 
@@ -339,10 +422,19 @@ mape = metrics.get("MAPE")
 m3.metric("Backtest MAPE", "—" if mape is None else f"{mape:,.2f}%")
 
 st.subheader("Actual vs Fitted vs Forecast")
-chart = forecast_df.set_index("Month")[["Actual", "Fitted", "Forecast"]]
-st.line_chart(chart, use_container_width=True)
+
+st.altair_chart(
+    altair_multiline(
+        forecast_df.drop(columns=[], errors="ignore"),
+        "Month",
+        ["Actual", "Fitted", "Forecast"],
+        f"{target}: Actual / Fitted / Forecast",
+        ""
+    ),
+    use_container_width=True
+)
 
 st.caption(
-    "Forecast model: Ridge regression with time trend + monthly seasonality features. "
-    "This is a lightweight baseline model suitable for dashboards."
+    "Colors: Oregon Tech Primary (Blue/Gold) + Industry & Donor-focused supporting palette. "
+    "Model: Ridge regression with time trend + monthly seasonality."
 )
