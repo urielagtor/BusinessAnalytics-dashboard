@@ -38,11 +38,11 @@ CLR_EMERALD = "#059669"
 
 CHART_PALETTE = [CLR_PRIMARY, CLR_TEAL, CLR_VIOLET, CLR_AMBER, CLR_SKY, CLR_EMERALD, CLR_ROSE]
 
-# Apply clean Altair theme
+# Apply clean Altair theme (uses new alt.theme API)
+@alt.theme.register("modern_clean", enable=True)
 def _modern_theme():
-    return {
-        "config": {
-            "background": "#FFFFFF",
+    return alt.theme.ThemeConfig(
+        {
             "title": {"color": "#334155", "fontSize": 14, "fontWeight": 600, "anchor": "start"},
             "axis": {
                 "labelColor": "#64748B",
@@ -60,10 +60,8 @@ def _modern_theme():
             },
             "view": {"strokeWidth": 0},
         }
-    }
+    )
 
-alt.themes.register("modern_clean", _modern_theme)
-alt.themes.enable("modern_clean")
 PALETTE_SCALE = alt.Scale(range=CHART_PALETTE)
 
 # -----------------------------
@@ -408,14 +406,14 @@ st.altair_chart(
         "Subscription vs API Revenue",
         "Revenue (USD)"
     ),
-    use_container_width=True
+    width="stretch"
 )
 
 st.subheader("Selected Metrics (Line Chart)")
 if selected_metrics:
     st.altair_chart(
         altair_multiline(fdf, "Month", selected_metrics, "Trends Over Time"),
-        use_container_width=True
+        width="stretch"
     )
 else:
     st.info("Select at least one metric in the sidebar to display the line chart.")
@@ -428,7 +426,7 @@ st.altair_chart(
         "New vs Churned vs Net Customers",
         "Customers"
     ),
-    use_container_width=True
+    width="stretch"
 )
 
 # Table
@@ -478,6 +476,6 @@ st.altair_chart(
         f"{target}: Actual / Fitted / Forecast",
         ""
     ),
-    use_container_width=True
+    width="stretch"
 )
 
