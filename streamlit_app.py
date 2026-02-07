@@ -24,7 +24,7 @@ import altair as alt
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 
-st.set_page_config(page_title="CoreWeave | Revenue Dashboard", layout="wide")
+st.set_page_config(page_title="CoreWeave | Revenue Dashboard", page_icon="CoreWeave Logo White.svg", layout="wide")
 
 # -----------------------------
 # CoreWeave brand chart palette
