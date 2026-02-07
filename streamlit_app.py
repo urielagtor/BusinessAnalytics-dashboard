@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import base64
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -279,7 +280,11 @@ df = clean_data(raw_gdp_df)
 # Sidebar logo
 _logo_path = Path(__file__).parent / "CoreWeave Logo White.svg"
 if _logo_path.exists():
-    st.sidebar.image(str(_logo_path), width=160)
+    _logo_b64 = base64.b64encode(_logo_path.read_bytes()).decode()
+    st.sidebar.markdown(
+        f'<img src="data:image/svg+xml;base64,{_logo_b64}" style="width:160px;margin-bottom:1.5rem;">',
+        unsafe_allow_html=True,
+    )
 
 st.title("CoreWeave Revenue & Customer Trends Dashboard")
 
