@@ -70,6 +70,27 @@ st.markdown(
         border-radius: 2px;
         margin: 0 0 1.5rem 0;
       }}
+
+      /* Sidebar styling */
+      section[data-testid="stSidebar"] {{
+        border-right: 1px solid rgba(255, 255, 255, 0.06);
+      }}
+      section[data-testid="stSidebar"] [data-testid="stSidebarHeader"] {{
+        border-bottom: 2px solid {CW_BLUE};
+        padding-bottom: 0.75rem;
+      }}
+      section[data-testid="stSidebar"] h1 {{
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: rgba(249, 250, 252, 0.5);
+      }}
+      section[data-testid="stSidebar"] .stSlider label,
+      section[data-testid="stSidebar"] .stMultiSelect label,
+      section[data-testid="stSidebar"] .stCheckbox label {{
+        font-size: 0.8rem;
+        letter-spacing: 0.02em;
+      }}
     </style>
     <div class="cw-accent"></div>
     """,
