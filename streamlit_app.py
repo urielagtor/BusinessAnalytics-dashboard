@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import base64
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -23,39 +24,41 @@ import altair as alt
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 
-st.set_page_config(page_title="OpenAIgi | Revenue Dashboard", layout="wide")
+st.set_page_config(page_title="CoreWeave | Revenue Dashboard", layout="wide")
 
 # -----------------------------
-# Color Palette – modern & clean
+# Color Palette – CoreWeave branding
 # -----------------------------
-CLR_PRIMARY = "#2563EB"
-CLR_TEAL = "#0D9488"
-CLR_VIOLET = "#7C3AED"
-CLR_ROSE = "#E11D48"
-CLR_AMBER = "#D97706"
-CLR_SKY = "#0EA5E9"
-CLR_EMERALD = "#059669"
+CW_BLUE = "#2741E7"
+CW_BLACK = "#000000"
+CW_LIGHT = "#F9FAFC"
+CW_CYAN = "#00D4FF"
+CW_VIOLET = "#7B61FF"
+CW_EMERALD = "#34D399"
+CW_AMBER = "#FBBF24"
+CW_ROSE = "#FB7185"
+CW_SKY = "#38BDF8"
 
-CHART_PALETTE = [CLR_PRIMARY, CLR_TEAL, CLR_VIOLET, CLR_AMBER, CLR_SKY, CLR_EMERALD, CLR_ROSE]
+CHART_PALETTE = [CW_BLUE, CW_CYAN, CW_VIOLET, CW_EMERALD, CW_AMBER, CW_SKY, CW_ROSE]
 
-# Apply clean Altair theme (uses new alt.theme API)
-@alt.theme.register("modern_clean", enable=True)
-def _modern_theme():
+# Apply CoreWeave Altair theme (uses new alt.theme API)
+@alt.theme.register("coreweave_dark", enable=True)
+def _coreweave_theme():
     return alt.theme.ThemeConfig(
         {
-            "title": {"color": "#334155", "fontSize": 14, "fontWeight": 600, "anchor": "start"},
+            "title": {"color": CW_LIGHT, "fontSize": 14, "fontWeight": 600, "anchor": "start"},
             "axis": {
-                "labelColor": "#64748B",
-                "titleColor": "#475569",
-                "gridColor": "#F1F5F9",
-                "domainColor": "#E2E8F0",
-                "tickColor": "#E2E8F0",
+                "labelColor": "#9CA3AF",
+                "titleColor": "#D1D5DB",
+                "gridColor": "#1F2937",
+                "domainColor": "#374151",
+                "tickColor": "#374151",
                 "labelFontSize": 11,
                 "titleFontSize": 12,
             },
             "legend": {
-                "labelColor": "#475569",
-                "titleColor": "#334155",
+                "labelColor": "#D1D5DB",
+                "titleColor": CW_LIGHT,
                 "labelFontSize": 11,
             },
             "view": {"strokeWidth": 0},
@@ -65,50 +68,51 @@ def _modern_theme():
 PALETTE_SCALE = alt.Scale(range=CHART_PALETTE)
 
 # -----------------------------
-# Light CSS polish (optional)
+# CoreWeave dark CSS
 # -----------------------------
 st.markdown(
     f"""
     <style>
-      /* Modern typography */
+      /* Typography */
       h1 {{
-        color: {CLR_PRIMARY};
+        color: {CW_LIGHT};
         font-weight: 700;
         letter-spacing: -0.025em;
       }}
       h2, h3 {{
-        color: #334155;
+        color: #D1D5DB;
         font-weight: 600;
       }}
 
       /* Sidebar */
       section[data-testid="stSidebar"] {{
-        background-color: #F8FAFC;
-        border-right: 1px solid #E2E8F0;
+        background-color: #0A0A10;
+        border-right: 1px solid #1F2937;
       }}
       section[data-testid="stSidebar"] h2,
       section[data-testid="stSidebar"] h3 {{
-        color: #334155;
+        color: {CW_LIGHT};
       }}
 
       /* KPI metric cards */
       div[data-testid="stMetricValue"] {{
         font-weight: 700;
         font-size: 1.6rem;
+        color: {CW_LIGHT};
       }}
       div[data-testid="stMetricLabel"] {{
-        color: #64748B;
+        color: #9CA3AF;
         font-weight: 500;
         text-transform: uppercase;
         font-size: 0.75rem;
         letter-spacing: 0.05em;
       }}
 
-      /* Clean accent bar */
-      .modern-accent {{
+      /* CoreWeave accent bar */
+      .cw-accent {{
         height: 4px;
         width: 48px;
-        background: linear-gradient(90deg, {CLR_PRIMARY}, {CLR_SKY});
+        background: linear-gradient(90deg, {CW_BLUE}, {CW_CYAN});
         border-radius: 2px;
         margin: 0 0 1.5rem 0;
       }}
@@ -116,12 +120,12 @@ st.markdown(
       /* Divider styling */
       hr {{
         border: none;
-        border-top: 1px solid #E2E8F0;
+        border-top: 1px solid #1F2937;
         margin: 2rem 0;
       }}
     </style>
 
-    <div class="modern-accent"></div>
+    <div class="cw-accent"></div>
     """,
     unsafe_allow_html=True,
 )
@@ -327,7 +331,16 @@ def altair_bar_grouped(df_in: pd.DataFrame, x_col: str, cols: list[str], title: 
 # -----------------------------
 df = clean_data(raw_gdp_df)
 
-st.title("OpenAI Revenue & Customer Trends Dashboard")
+# Sidebar logo
+_logo_path = Path(__file__).parent / "CoreWeave Logo White.svg"
+if _logo_path.exists():
+    _logo_b64 = base64.b64encode(_logo_path.read_bytes()).decode()
+    st.sidebar.markdown(
+        f'<img src="data:image/svg+xml;base64,{_logo_b64}" style="width:160px;margin-bottom:1.5rem;">',
+        unsafe_allow_html=True,
+    )
+
+st.title("CoreWeave Revenue & Customer Trends Dashboard")
 
 # Sidebar
 st.sidebar.title("Filters")
