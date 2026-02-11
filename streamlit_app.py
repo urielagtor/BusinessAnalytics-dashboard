@@ -581,26 +581,14 @@ if _fbx_files:
 
           var loader = new THREE.FBXLoader();
           loader.load(blobUrl, function(object) {
-            // Fix materials: ensure they respond to light
+            // Fix materials: use MeshNormalMaterial and compute normals
+            var normalMat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide, flatShading: true });
             object.traverse(function(child) {
-              if (child.isMesh) {
-                var mat = child.material;
-                if (Array.isArray(mat)) {
-                  child.material = mat.map(function(m) {
-                    var c = (m.color && m.color.r + m.color.g + m.color.b > 0.1) ? m.color : new THREE.Color(0x8899aa);
-                    return new THREE.MeshPhongMaterial({
-                      color: c,
-                      shininess: 30,
-                      side: THREE.DoubleSide
-                    });
-                  });
-                } else {
-                  var c = (mat.color && mat.color.r + mat.color.g + mat.color.b > 0.1) ? mat.color : new THREE.Color(0x8899aa);
-                  child.material = new THREE.MeshPhongMaterial({
-                    color: c,
-                    shininess: 30,
-                    side: THREE.DoubleSide
-                  });
+              if (child instanceof THREE.Mesh) {
+                child.material = normalMat;
+                if (child.geometry) {
+                  child.geometry.computeVertexNormals();
+                  child.geometry.computeBoundingBox();
                 }
               }
             });
