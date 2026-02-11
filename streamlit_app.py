@@ -576,16 +576,25 @@ if _fbx_files:
 
           var loader = new THREE.FBXLoader();
           loader.load(blobUrl, function(object) {
+            // Normalize model to ~200 units regardless of original scale
             var box = new THREE.Box3().setFromObject(object);
-            var center = box.getCenter(new THREE.Vector3());
             var size = box.getSize(new THREE.Vector3());
+            var maxDim = Math.max(size.x, size.y, size.z);
+            if (maxDim > 0) {
+              var scale = 200 / maxDim;
+              object.scale.multiplyScalar(scale);
+            }
+
+            // Recompute after scaling
+            box.setFromObject(object);
+            var center = box.getCenter(new THREE.Vector3());
+            size = box.getSize(new THREE.Vector3());
             object.position.sub(center);
             object.position.y += size.y / 2;
 
             scene.add(object);
 
-            var maxDim = Math.max(size.x, size.y, size.z);
-            camera.position.set(maxDim * 0.8, maxDim * 0.6, maxDim * 0.8);
+            camera.position.set(250, 180, 250);
             controls.target.set(0, size.y / 2, 0);
             controls.update();
 
