@@ -539,25 +539,17 @@ if _fbx_files:
           var renderer = new THREE.WebGLRenderer({ antialias: true });
           renderer.setSize(w, h);
           renderer.setPixelRatio(window.devicePixelRatio);
-          renderer.toneMapping = THREE.ACESFilmicToneMapping;
-          renderer.toneMappingExposure = 1.2;
+          renderer.gammaOutput = true;
+          renderer.gammaFactor = 2.2;
           document.body.appendChild(renderer.domElement);
 
-          // Lighting — strong even illumination
-          scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-          scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.8));
+          // Lighting — bright even illumination for textured models
+          scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+          scene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 1.0));
 
-          var dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+          var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
           dirLight.position.set(200, 400, 200);
           scene.add(dirLight);
-
-          var dirLight2 = new THREE.DirectionalLight(0xffffff, 0.6);
-          dirLight2.position.set(-200, 300, -100);
-          scene.add(dirLight2);
-
-          var fillLight = new THREE.DirectionalLight(0x2741E7, 0.4);
-          fillLight.position.set(0, -100, 200);
-          scene.add(fillLight);
 
           // Grid
           scene.add(new THREE.GridHelper(600, 40, 0x2741E7, 0x111118));
@@ -581,15 +573,15 @@ if _fbx_files:
 
           var loader = new THREE.FBXLoader();
           loader.load(blobUrl, function(object) {
-            // Fix materials: use MeshNormalMaterial and compute normals
-            var normalMat = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide, flatShading: true });
+            // Keep original FBX textures; just fix rendering quirks
             object.traverse(function(child) {
               if (child instanceof THREE.Mesh) {
-                child.material = normalMat;
-                if (child.geometry) {
-                  child.geometry.computeVertexNormals();
-                  child.geometry.computeBoundingBox();
-                }
+                if (child.geometry) child.geometry.computeVertexNormals();
+                var mats = Array.isArray(child.material) ? child.material : [child.material];
+                mats.forEach(function(m) {
+                  m.side = THREE.DoubleSide;
+                  if (m.map) m.map.encoding = THREE.sRGBEncoding;
+                });
               }
             });
 
