@@ -504,10 +504,10 @@ if _fbx_files:
     <div id="controls-hint">Drag to rotate &middot; Scroll to zoom &middot; Right-drag to pan</div>
     <script>
       var _scripts = [
-        "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r149/build/three.min.js",
-        "https://cdn.jsdelivr.net/npm/fflate@0.8.0/umd/index.js",
-        "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r149/examples/js/controls/OrbitControls.js",
-        "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r149/examples/js/loaders/FBXLoader.js"
+        "https://unpkg.com/three@0.99.0/build/three.min.js",
+        "https://unpkg.com/three@0.99.0/examples/js/libs/inflate.min.js",
+        "https://unpkg.com/three@0.99.0/examples/js/controls/OrbitControls.js",
+        "https://unpkg.com/three@0.99.0/examples/js/loaders/FBXLoader.js"
       ];
       var _loaded = 0;
       function _loadNext() {
