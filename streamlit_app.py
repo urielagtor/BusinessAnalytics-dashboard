@@ -502,102 +502,122 @@ if _fbx_files:
     <div id="loading">Loading 3D model...</div>
     <div id="error-msg"></div>
     <div id="controls-hint">Drag to rotate &middot; Scroll to zoom &middot; Right-drag to pan</div>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.152.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.0/umd/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.152.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.152.0/examples/js/loaders/FBXLoader.js"></script>
     <script>
-      try {
-        var w = document.body.clientWidth;
-        var h = document.body.clientHeight;
-
-        var scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x000000);
-
-        var camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 10000);
-        camera.position.set(0, 150, 300);
-
-        var renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(w, h);
-        renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.2;
-        document.body.appendChild(renderer.domElement);
-
-        // Lighting
-        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-
-        var dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
-        dirLight.position.set(200, 400, 200);
-        scene.add(dirLight);
-
-        var fillLight = new THREE.DirectionalLight(0x2741E7, 0.3);
-        fillLight.position.set(-200, 100, -200);
-        scene.add(fillLight);
-
-        // Grid
-        scene.add(new THREE.GridHelper(600, 40, 0x2741E7, 0x111118));
-
-        // Controls
-        var controls = new THREE.OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.08;
-        controls.minDistance = 50;
-        controls.maxDistance = 2000;
-        controls.target.set(0, 50, 0);
-        controls.update();
-
-        // Load FBX from base64
-        var fbxB64 = "%%FBX_B64%%";
-        var raw = atob(fbxB64);
-        var bytes = new Uint8Array(raw.length);
-        for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-        var blob = new Blob([bytes.buffer]);
-        var url = URL.createObjectURL(blob);
-
-        var loader = new THREE.FBXLoader();
-        loader.load(url, function(object) {
-          var box = new THREE.Box3().setFromObject(object);
-          var center = box.getCenter(new THREE.Vector3());
-          var size = box.getSize(new THREE.Vector3());
-          object.position.sub(center);
-          object.position.y += size.y / 2;
-
-          scene.add(object);
-
-          var maxDim = Math.max(size.x, size.y, size.z);
-          camera.position.set(maxDim * 0.8, maxDim * 0.6, maxDim * 0.8);
-          controls.target.set(0, size.y / 2, 0);
-          controls.update();
-
-          document.getElementById('loading').style.display = 'none';
-          URL.revokeObjectURL(url);
-        }, undefined, function(err) {
+      var _scripts = [
+        "https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js",
+        "https://cdn.jsdelivr.net/npm/fflate@0.8.0/umd/index.js",
+        "https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/controls/OrbitControls.js",
+        "https://cdn.jsdelivr.net/npm/three@0.149.0/examples/js/loaders/FBXLoader.js"
+      ];
+      var _loaded = 0;
+      function _loadNext() {
+        if (_loaded >= _scripts.length) { _init(); return; }
+        var s = document.createElement('script');
+        s.src = _scripts[_loaded];
+        s.onload = function() { _loaded++; _loadNext(); };
+        s.onerror = function() {
           document.getElementById('loading').style.display = 'none';
           var el = document.getElementById('error-msg');
           el.style.display = 'block';
-          el.textContent = 'Failed to load model: ' + err.message;
-        });
+          el.textContent = 'Failed to load: ' + _scripts[_loaded];
+        };
+        document.head.appendChild(s);
+      }
+      _loadNext();
 
-        window.addEventListener('resize', function() {
-          var w2 = document.body.clientWidth;
-          var h2 = document.body.clientHeight;
-          camera.aspect = w2 / h2;
-          camera.updateProjectionMatrix();
-          renderer.setSize(w2, h2);
-        });
+      function _init() {
+        try {
+          var w = document.body.clientWidth;
+          var h = document.body.clientHeight || 580;
 
-        function animate() {
-          requestAnimationFrame(animate);
+          var scene = new THREE.Scene();
+          scene.background = new THREE.Color(0x000000);
+
+          var camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 10000);
+          camera.position.set(0, 150, 300);
+
+          var renderer = new THREE.WebGLRenderer({ antialias: true });
+          renderer.setSize(w, h);
+          renderer.setPixelRatio(window.devicePixelRatio);
+          renderer.toneMapping = THREE.ACESFilmicToneMapping;
+          renderer.toneMappingExposure = 1.2;
+          document.body.appendChild(renderer.domElement);
+
+          // Lighting
+          scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+          var dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+          dirLight.position.set(200, 400, 200);
+          scene.add(dirLight);
+
+          var fillLight = new THREE.DirectionalLight(0x2741E7, 0.3);
+          fillLight.position.set(-200, 100, -200);
+          scene.add(fillLight);
+
+          // Grid
+          scene.add(new THREE.GridHelper(600, 40, 0x2741E7, 0x111118));
+
+          // Controls
+          var controls = new THREE.OrbitControls(camera, renderer.domElement);
+          controls.enableDamping = true;
+          controls.dampingFactor = 0.08;
+          controls.minDistance = 50;
+          controls.maxDistance = 2000;
+          controls.target.set(0, 50, 0);
           controls.update();
-          renderer.render(scene, camera);
+
+          // Load FBX from base64
+          var fbxB64 = "%%FBX_B64%%";
+          var raw = atob(fbxB64);
+          var bytes = new Uint8Array(raw.length);
+          for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+          var blob = new Blob([bytes.buffer]);
+          var blobUrl = URL.createObjectURL(blob);
+
+          var loader = new THREE.FBXLoader();
+          loader.load(blobUrl, function(object) {
+            var box = new THREE.Box3().setFromObject(object);
+            var center = box.getCenter(new THREE.Vector3());
+            var size = box.getSize(new THREE.Vector3());
+            object.position.sub(center);
+            object.position.y += size.y / 2;
+
+            scene.add(object);
+
+            var maxDim = Math.max(size.x, size.y, size.z);
+            camera.position.set(maxDim * 0.8, maxDim * 0.6, maxDim * 0.8);
+            controls.target.set(0, size.y / 2, 0);
+            controls.update();
+
+            document.getElementById('loading').style.display = 'none';
+            URL.revokeObjectURL(blobUrl);
+          }, undefined, function(err) {
+            document.getElementById('loading').style.display = 'none';
+            var el = document.getElementById('error-msg');
+            el.style.display = 'block';
+            el.textContent = 'Failed to load model: ' + (err.message || err);
+          });
+
+          window.addEventListener('resize', function() {
+            var w2 = document.body.clientWidth;
+            var h2 = document.body.clientHeight || 580;
+            camera.aspect = w2 / h2;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w2, h2);
+          });
+
+          function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+          }
+          animate();
+        } catch(e) {
+          document.getElementById('loading').style.display = 'none';
+          var el = document.getElementById('error-msg');
+          el.style.display = 'block';
+          el.textContent = 'Error: ' + e.message;
         }
-        animate();
-      } catch(e) {
-        document.getElementById('loading').style.display = 'none';
-        var el = document.getElementById('error-msg');
-        el.style.display = 'block';
-        el.textContent = 'Error: ' + e.message;
       }
     </script>
     </body>
