@@ -107,7 +107,6 @@ st.markdown(
 # Paths (repo-relative)
 # ----------------------------
 DATA_PATH = "data/CoreWeave_BalanceSheet_SEC_Filings_simulated.xlsx"
-LOGO_PATH = "CoreWeave Logo White.svg"
 MODELS_DIR = Path(__file__).parent / "models"
 
 # ----------------------------
@@ -375,11 +374,6 @@ backtest_min_train = 6
 # Sidebar Navigation + Controls
 # ----------------------------
 with st.sidebar:
-    if os.path.exists(LOGO_PATH):
-        st.image(LOGO_PATH, use_container_width=True)
-    else:
-        st.markdown("<span class='cw-badge'>CoreWeave</span>", unsafe_allow_html=True)
-
     st.markdown("### Navigation")
     page = st.radio(
         "Go to",
