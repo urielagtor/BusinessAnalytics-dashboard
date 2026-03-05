@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.express as px
+import altair as alt
 import plotly.graph_objects as go
 
 from sklearn.pipeline import Pipeline
