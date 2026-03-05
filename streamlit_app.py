@@ -17,12 +17,12 @@ import math
 import os
 import base64
 from pathlib import Path
+import base64
 import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
-import altair as alt
 
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
@@ -386,8 +386,6 @@ with st.sidebar:
 
     st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
 
-    ratio_threshold = st.slider("DTI Alert Threshold", 0.5, 3.0, 1.5, 0.1)
-
 def altair_multiline(df_in: pd.DataFrame, x_col: str, y_cols: list[str], title: str, y_title: str = ""):
     long = df_in[[x_col] + y_cols].melt(id_vars=[x_col], var_name="Series", value_name="Value")
     chart = (
@@ -437,7 +435,13 @@ def altair_bar_grouped(df_in: pd.DataFrame, x_col: str, cols: list[str], title: 
         .properties(title=title, height=320)
         .interactive()
     )
-    return chart
+
+    st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
+    status, status_sub = status_label(current_ratio, ratio_threshold)
+    st.markdown("### Current status")
+    st.write(f"**DTI:** {current_ratio:,.2f}" if not np.isnan(current_ratio) else "**DTI:** —")
+    st.write(f"**Status:** {status}")
+    st.caption(status_sub)
 
 # Sidebar logo
 _logo_path = Path(__file__).parent / "CoreWeave Logo White.svg"
