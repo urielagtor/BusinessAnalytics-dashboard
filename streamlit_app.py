@@ -1,19 +1,23 @@
-# app.py
-# CoreWeave-branded Streamlit dashboard
-# Includes:
-# 1) Predictive: time-series style forecasting (Ridge regression with time + quarter features)
-# 2) Prescriptive: scenario simulator + if-then recommendations
-# 3) Insights/Decision implications: interpretable drivers, uncertainty, limitations
+# streamlit_app.py
+# CoreWeave executive dashboard with SIDEBAR navigation + 25/75 two-column layouts
+# + "Dictionary" page
+# + NEW "3D Viewer" page (FBX models in ./models)
+#
+# Notes for repo:
+# - data file:   data/CoreWeave_BalanceSheet_SEC_Filings_simulated.xlsx
+# - logo file:   CoreWeave Logo White.svg
+# - 3D models:   models/*.fbx
 #
 # Run:
 #   pip install streamlit pandas openpyxl scikit-learn plotly numpy
-#   streamlit run app.py
-#
-# If you run this inside an environment where the provided Excel exists, it will load by default.
-# Otherwise, upload the file in the sidebar.
+#   streamlit run streamlit_app.py
 
 import re
 import math
+import os
+import base64
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -25,26 +29,30 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from PIL import Image
+
+
 
 # ----------------------------
 # Page config
 # ----------------------------
+favicon = Image.open("favicon.png")
 st.set_page_config(
     page_title="CoreWeave | Debt-to-Income Strategy Dashboard",
-    page_icon="⚡",
-    layout="wide"
+    page_icon=favicon,
+    layout="wide",
 )
 
 # ----------------------------
 # Branding (CoreWeave-ish)
-# NOTE: adjust to official brand guide if you have one.
 # ----------------------------
-CW_ACCENT = "#2F5BEA"   # blue accent
+CW_ACCENT = "#2F5BEA"
 CW_BG = "#070A12"
 CW_PANEL = "#0E1424"
 CW_TEXT = "#E9ECF5"
 CW_MUTED = "#A7B0C3"
 CW_WARN = "#FFB020"
+CW_DANGER = "#FF4D4D"
 
 st.markdown(
     f"""
@@ -53,10 +61,9 @@ st.markdown(
         background: linear-gradient(180deg, {CW_BG} 0%, #050712 100%);
         color: {CW_TEXT};
       }}
-      h1,h2,h3,h4 {{
-        color: {CW_TEXT};
-      }}
-      .cw-badge {{
+      h1,h2,h3,h4 {{ color: {CW_TEXT}; }}
+
+      .cw-badge{{
         display:inline-block;
         padding: 6px 10px;
         border-radius: 999px;
@@ -66,43 +73,48 @@ st.markdown(
         font-size: 12px;
         letter-spacing: 0.2px;
       }}
-      .cw-card {{
+      .cw-card{{
         background: {CW_PANEL};
         border: 1px solid rgba(255,255,255,0.08);
         border-radius: 14px;
         padding: 14px 16px;
       }}
-      .cw-muted {{
-        color: {CW_MUTED};
-      }}
-      .cw-warn {{
-        color: {CW_WARN};
-      }}
-      div[data-testid="metric-container"] {{
+      .cw-muted {{ color: {CW_MUTED}; }}
+      .cw-warn {{ color: {CW_WARN}; }}
+      .cw-danger {{ color: {CW_DANGER}; }}
+
+      div[data-testid="metric-container"]{{
         background: {CW_PANEL};
         border: 1px solid rgba(255,255,255,0.08);
         padding: 14px 16px;
         border-radius: 14px;
       }}
-      .stTabs [data-baseweb="tab-list"] button {{
-        background: transparent !important;
+
+      /* Sidebar styling polish */
+      [data-testid="stSidebar"] {{
+        background: rgba(14, 20, 36, 0.85);
+        border-right: 1px solid rgba(255,255,255,0.08);
       }}
-      .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {{
-        border-bottom: 3px solid {CW_ACCENT} !important;
-      }}
-      a {{
-        color: {CW_ACCENT} !important;
+      .cw-divider {{
+        height: 1px;
+        background: rgba(255,255,255,0.10);
+        margin: 10px 0 18px 0;
       }}
     </style>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 # ----------------------------
-# Defaults / constants
+# Paths (repo-relative)
 # ----------------------------
-DEFAULT_XLSX_PATH = "/mnt/data/Copy of CoreWeave_BalanceSheet_SEC_Filings (with simulated data).xlsx"
+DATA_PATH = "data/CoreWeave_BalanceSheet_SEC_Filings_simulated.xlsx"
+LOGO_PATH = "CoreWeave Logo White.svg"
+MODELS_DIR = Path(__file__).parent / "models"
 
+# ----------------------------
+# Columns / model config
+# ----------------------------
 METRICS = [
     "Revenue_USD",
     "Cost_of_Revenue_USD",
@@ -118,7 +130,6 @@ METRICS = [
 FEATURE_COLS = [
     "t",
     "Quarter",
-    # optional drivers if present (kept numeric and explainable)
     "Cost_of_Revenue_USD",
     "Technology_Infra_USD",
     "Sales_Marketing_USD",
@@ -150,7 +161,6 @@ def pct(x) -> str:
 
 
 def parse_period_date(period_str: str):
-    """Extract the date inside parentheses: 'Q1 2022 (Mar 31, 2022)' -> 2022-03-31."""
     if not isinstance(period_str, str):
         return pd.NaT
     m = re.search(r"\(([^)]+)\)", period_str)
@@ -160,7 +170,6 @@ def parse_period_date(period_str: str):
 
 
 def period_type(period_str: str):
-    """Return 'Q1'..'Q4' or 'FY' if detected."""
     if not isinstance(period_str, str):
         return None
     m = re.match(r"^(Q[1-4]|FY)", period_str.strip())
@@ -168,12 +177,13 @@ def period_type(period_str: str):
 
 
 def safe_div(a, b):
-    if b is None:
-        return np.nan
     try:
-        if float(b) == 0:
+        if b is None:
             return np.nan
-        return float(a) / float(b)
+        b = float(b)
+        if b == 0:
+            return np.nan
+        return float(a) / b
     except Exception:
         return np.nan
 
@@ -186,14 +196,15 @@ def mape(y_true, y_pred):
 
 
 @st.cache_data
-def load_data(uploaded_file):
-    if uploaded_file is not None:
-        return pd.read_excel(uploaded_file)
-    # fallback
-    return pd.read_excel(DEFAULT_XLSX_PATH)
+def load_data() -> pd.DataFrame:
+    if not os.path.exists(DATA_PATH):
+        raise FileNotFoundError(
+            f"Data file not found at '{DATA_PATH}'. Make sure it exists in your repo."
+        )
+    return pd.read_excel(DATA_PATH)
 
 
-def prep_df(df_raw: pd.DataFrame) -> pd.DataFrame:
+def prep_df(df_raw: pd.DataFrame):
     df = df_raw.copy()
     if "Period" not in df.columns:
         raise ValueError("Expected a 'Period' column in the Excel file.")
@@ -201,40 +212,31 @@ def prep_df(df_raw: pd.DataFrame) -> pd.DataFrame:
     df["Date"] = df["Period"].apply(parse_period_date)
     df["Period_Type"] = df["Period"].apply(period_type)
 
-    # Coerce numeric fields
     for c in METRICS:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    df = df[df["Date"].notna()].copy()
-    df = df.sort_values("Date").reset_index(drop=True)
+    df = df[df["Date"].notna()].copy().sort_values("Date").reset_index(drop=True)
 
-    # Quarterly-only for forecasting (FY duplicates dates; keep FY for overview if you want)
     df_q = df[df["Period_Type"].str.startswith("Q", na=False)].copy()
     df_q = df_q.sort_values("Date").reset_index(drop=True)
 
     df_q["Quarter"] = df_q["Date"].dt.quarter
     df_q["t"] = np.arange(len(df_q), dtype=int)
 
-    # Core KPI: Debt-to-Income proxy = Total Liabilities / Revenue
     df_q["Debt_to_Income"] = df_q.apply(
-        lambda r: safe_div(r.get("Total_Liabilities_USD", np.nan), r.get("Revenue_USD", np.nan)), axis=1
+        lambda r: safe_div(r.get("Total_Liabilities_USD", np.nan), r.get("Revenue_USD", np.nan)),
+        axis=1,
     )
 
-    # Operating margin (optional insight)
     df_q["Op_Margin"] = df_q.apply(
-        lambda r: safe_div(r.get("Operating_Income_USD", np.nan), r.get("Revenue_USD", np.nan)), axis=1
+        lambda r: safe_div(r.get("Operating_Income_USD", np.nan), r.get("Revenue_USD", np.nan)),
+        axis=1,
     )
-
     return df, df_q
 
 
 def build_model():
-    """
-    Ridge regression with:
-      - numeric: t + selected spend/expense drivers
-      - categorical: Quarter (seasonality)
-    """
     numeric_features = [c for c in FEATURE_COLS if c != "Quarter"]
     categorical_features = ["Quarter"]
 
@@ -245,53 +247,32 @@ def build_model():
         ],
         remainder="drop",
     )
-
     model = Ridge(alpha=1.0, random_state=42)
-    pipe = Pipeline([("pre", pre), ("model", model)])
-    return pipe, numeric_features, categorical_features
+    return Pipeline([("pre", pre), ("model", model)])
 
 
 def time_series_backtest(df_q: pd.DataFrame, target_col: str, min_train: int = 6):
-    """
-    Simple expanding-window backtest:
-      train on [0:i), test on i for i >= min_train
-    Returns predictions aligned to df_q rows and metrics.
-    """
-    pipe, _, _ = build_model()
-
+    pipe = build_model()
     use_cols = [c for c in FEATURE_COLS if c in df_q.columns] + ["Quarter"]
-    use_cols = list(dict.fromkeys(use_cols))  # de-dupe
+    use_cols = list(dict.fromkeys(use_cols))
 
-    # drop rows missing target
     dfx = df_q.dropna(subset=[target_col]).copy()
     if len(dfx) < (min_train + 2):
         return None
 
-    preds = []
-    actuals = []
-    dates = []
-
+    preds, actuals, dates = [], [], []
     for i in range(min_train, len(dfx)):
-        train = dfx.iloc[:i].copy()
-        test = dfx.iloc[i : i + 1].copy()
-
-        # Drop rows missing key features
-        train = train.dropna(subset=use_cols + [target_col])
-        test = test.dropna(subset=use_cols + [target_col])
-
+        train = dfx.iloc[:i].dropna(subset=use_cols + [target_col]).copy()
+        test = dfx.iloc[i:i+1].dropna(subset=use_cols + [target_col]).copy()
         if len(train) < min_train or len(test) != 1:
             continue
 
-        X_train = train[use_cols]
-        y_train = train[target_col]
-        X_test = test[use_cols]
-        y_test = float(test[target_col].iloc[0])
-
-        pipe.fit(X_train, y_train)
-        y_pred = float(pipe.predict(X_test)[0])
+        pipe.fit(train[use_cols], train[target_col])
+        y_pred = float(pipe.predict(test[use_cols])[0])
+        y_true = float(test[target_col].iloc[0])
 
         preds.append(y_pred)
-        actuals.append(y_test)
+        actuals.append(y_true)
         dates.append(test["Date"].iloc[0])
 
     if len(preds) < 2:
@@ -300,31 +281,23 @@ def time_series_backtest(df_q: pd.DataFrame, target_col: str, min_train: int = 6
     mae = mean_absolute_error(actuals, preds)
     rmse = math.sqrt(mean_squared_error(actuals, preds))
     mape_val = mape(actuals, preds)
-
     out = pd.DataFrame({"Date": dates, "Actual": actuals, "Predicted": preds}).sort_values("Date")
-    return {"series": out, "mae": mae, "rmse": rmse, "mape": mape_val, "pipe": pipe, "use_cols": use_cols}
+    return {"series": out, "mae": mae, "rmse": rmse, "mape": mape_val}
 
 
 def fit_and_forecast_next(df_q: pd.DataFrame, target_col: str):
-    """
-    Fit on all available quarterly data (with target present) and forecast next quarter.
-    """
-    pipe, _, _ = build_model()
+    pipe = build_model()
     use_cols = [c for c in FEATURE_COLS if c in df_q.columns] + ["Quarter"]
     use_cols = list(dict.fromkeys(use_cols))
 
-    dfx = df_q.dropna(subset=[target_col]).copy()
-    dfx = dfx.dropna(subset=use_cols).copy()
+    dfx = df_q.dropna(subset=[target_col]).dropna(subset=use_cols).copy()
     if len(dfx) < 6:
         return None
 
-    X = dfx[use_cols]
-    y = dfx[target_col]
-    pipe.fit(X, y)
+    pipe.fit(dfx[use_cols], dfx[target_col])
 
-    # Create next-quarter feature row
     last = df_q.sort_values("Date").iloc[-1].copy()
-    next_date = (last["Date"] + pd.offsets.QuarterEnd(1))
+    next_date = last["Date"] + pd.offsets.QuarterEnd(1)
     next_quarter = int(((int(last["Quarter"]) % 4) + 1))
 
     next_row = last.copy()
@@ -332,450 +305,574 @@ def fit_and_forecast_next(df_q: pd.DataFrame, target_col: str):
     next_row["t"] = int(last["t"]) + 1
     next_row["Quarter"] = next_quarter
 
-    # Keep spend drivers as "latest known" (conceptually: carry forward).
-    # The prescriptive tab lets users alter these assumptions interactively.
-    X_next = pd.DataFrame([next_row])[use_cols]
-    y_next = float(pipe.predict(X_next)[0])
-
-    return {"next_date": next_date, "next_pred": y_next, "pipe": pipe, "use_cols": use_cols, "next_row": next_row}
+    y_next = float(pipe.predict(pd.DataFrame([next_row])[use_cols])[0])
+    return {"next_date": next_date, "next_pred": y_next}
 
 
-def rule_recommendation(current_ratio, projected_ratio, levers):
-    """
-    Simple if-then recommendations; keep transparent and rubric-friendly.
-    """
-    rev_growth, opex_cut, liab_paydown = levers
+def status_label(dti, threshold):
+    if np.isnan(dti):
+        return ("Unknown", "Data incomplete")
+    if dti >= threshold:
+        return ("Needs action", "DTI above threshold")
+    if dti >= (threshold * 0.9):
+        return ("Watch", "DTI near threshold")
+    return ("Healthy", "DTI below threshold")
 
-    msg = []
-    if projected_ratio <= 0:
-        return ["Check inputs: projected ratio is non-positive."]
 
-    # Severity tiers (tune if your instructor expects different)
+def rule_recommendation(projected_ratio, levers, threshold):
+    rev_growth, opex_change, liab_paydown = levers
+    msgs = []
+
+    if projected_ratio is None or np.isnan(projected_ratio) or projected_ratio <= 0:
+        return ["Check inputs: projected ratio is invalid."]
+
     if projected_ratio >= 2.0:
-        msg.append("High risk: debt-to-income remains very elevated. Prioritize liability reduction and improve revenue quality (higher-margin contracts).")
-    elif projected_ratio >= 1.2:
-        msg.append("Moderate risk: ratio is still above a typical comfort zone. Combine revenue growth with disciplined spend controls.")
+        msgs.append("Prioritize liability reduction/refinancing and revenue quality (higher-margin, longer-term contracts).")
+    elif projected_ratio >= threshold:
+        msgs.append("Combine revenue growth with disciplined cost controls and a liability strategy to bring DTI below threshold.")
     else:
-        msg.append("Improving: projected ratio is trending healthier. Maintain controls and avoid over-leveraging future expansion.")
+        msgs.append("Maintain discipline: keep liabilities from outpacing revenue and avoid over-leveraging expansions.")
 
-    if opex_cut <= 0 and projected_ratio > current_ratio:
-        msg.append("Costs are not being reduced and the ratio worsens—consider an operating expense reduction plan (especially non-core spend).")
+    if opex_change > 0 and projected_ratio >= threshold:
+        msgs.append("OpEx increases while DTI is high—consider freezing discretionary spend until DTI improves.")
 
-    if rev_growth < 5 and projected_ratio > 1.2:
-        msg.append("Revenue growth assumption is modest; consider initiatives that increase utilization/throughput and longer-term enterprise commitments.")
+    if rev_growth < 5 and projected_ratio >= threshold:
+        msgs.append("Revenue growth assumption is modest—focus on utilization, pricing, and enterprise commitments.")
 
-    if liab_paydown < 2 and projected_ratio > 1.2:
-        msg.append("Low liability paydown; explore refinancing, improved terms, or targeted paydowns using operating cash flow / asset-backed facilities.")
+    if liab_paydown < 2 and projected_ratio >= threshold:
+        msgs.append("Low liabilities improvement—explore refinancing, term extensions, or targeted paydowns.")
 
-    # Tie to levers
-    msg.append(f"Primary levers used: Revenue growth {rev_growth:.1f}%, OpEx change {opex_cut:.1f}%, Liabilities paydown {liab_paydown:.1f}%.")
-    return msg
+    msgs.append(f"Levers: Revenue growth {rev_growth:.1f}%, OpEx change {opex_change:.1f}%, Liabilities improvement {liab_paydown:.1f}%.")
+    return msgs
 
-
-# ----------------------------
-# Header
-# ----------------------------
-st.markdown("<span class='cw-badge'>Debt-to-Income Improvement</span>", unsafe_allow_html=True)
-st.title("CoreWeave | Debt-to-Income Strategy Dashboard")
-st.caption("Objective: provide data-driven advice on improving Debt-to-Income ratio (Liabilities ÷ Revenue).")
 
 # ----------------------------
-# Sidebar (inputs)
-# ----------------------------
-with st.sidebar:
-    st.header("Data Source")
-    uploaded = st.file_uploader("Upload Excel (.xlsx)", type=["xlsx"])
-    st.caption("If no file is uploaded, the app will try to load the default provided workbook path.")
-
-    st.divider()
-    st.header("Dashboard Controls")
-
-    ratio_threshold = st.slider(
-        "Debt-to-Income alert threshold",
-        min_value=0.5, max_value=3.0, value=1.2, step=0.1
-    )
-
-    backtest_min_train = st.slider(
-        "Backtest minimum training quarters",
-        min_value=4, max_value=12, value=6, step=1
-    )
-
-# ----------------------------
-# Load + prep
+# Load data
 # ----------------------------
 try:
-    df_raw = load_data(uploaded)
+    df_raw = load_data()
     df_all, df_q = prep_df(df_raw)
 except Exception as e:
-    st.error(f"Could not load/parse the data: {e}")
+    st.error(str(e))
     st.stop()
 
 if df_q.empty:
     st.warning("No quarterly rows found (expected Period values starting with Q1..Q4).")
     st.stop()
 
-# ----------------------------
-# Tabs
-# ----------------------------
-tab1, tab2, tab3, tab4 = st.tabs([
-    "Overview",
-    "Predictive (Forecasting)",
-    "Prescriptive (Scenarios)",
-    "Insights & Decision Implications"
-])
+latest = df_q.sort_values("Date").iloc[-1]
+current_ratio = float(latest.get("Debt_to_Income", np.nan))
+
+# Baseline forecast shared across pages
+fc_liab = fit_and_forecast_next(df_q, "Total_Liabilities_USD")
+fc_rev = fit_and_forecast_next(df_q, "Revenue_USD")
+base_rev = float(fc_rev["next_pred"]) if fc_rev else np.nan
+base_liab = float(fc_liab["next_pred"]) if fc_liab else np.nan
+base_ratio = safe_div(base_liab, base_rev) if (fc_rev and fc_liab) else np.nan
+next_label = fc_liab["next_date"].strftime("%b %d, %Y") if fc_liab else "Next quarter"
 
 # ----------------------------
-# Overview tab
+# Sidebar Navigation + Controls
 # ----------------------------
-with tab1:
-    latest = df_q.sort_values("Date").iloc[-1]
-    prev = df_q.sort_values("Date").iloc[-2] if len(df_q) >= 2 else None
+with st.sidebar:
+    if os.path.exists(LOGO_PATH):
+        st.image(LOGO_PATH, use_container_width=True)
+    else:
+        st.markdown("<span class='cw-badge'>CoreWeave</span>", unsafe_allow_html=True)
+
+    st.markdown("### Navigation")
+    page = st.radio(
+        "Go to",
+        ["Overview", "Forecast", "Scenario Planner", "3D Viewer", "Recommendations & Risks", "Dictionary"],
+        label_visibility="collapsed",
+    )
+
+    st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
+
+    st.markdown("### Controls")
+    ratio_threshold = st.slider(
+        "DTI alert threshold",
+        0.5, 3.0, 1.2, 0.1,
+        help="If DTI exceeds this threshold, the dashboard flags it as requiring mitigation.",
+    )
+    backtest_min_train = st.slider(
+        "Backtest min training quarters",
+        4, 12, 6, 1,
+        help="Higher values can stabilize backtests but reduce the number of backtest points.",
+    )
+
+    st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
+    status, status_sub = status_label(current_ratio, ratio_threshold)
+    st.markdown("### Current status")
+    st.write(f"**DTI:** {current_ratio:,.2f}" if not np.isnan(current_ratio) else "**DTI:** —")
+    st.write(f"**Status:** {status}")
+    st.caption(status_sub)
+
+# ----------------------------
+# Main Header + Executive Summary
+# ----------------------------
+st.markdown("<span class='cw-badge'>Executive Decision Dashboard</span>", unsafe_allow_html=True)
+st.title("Debt-to-Income Strategy Dashboard")
+st.caption("Goal: improve Debt-to-Income (Total Liabilities ÷ Revenue) using forecasts + what-if scenarios.")
+
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("Current DTI", f"{current_ratio:,.2f}" if not np.isnan(current_ratio) else "—")
+k2.metric(f"Baseline Forecast DTI ({next_label})", f"{base_ratio:,.2f}" if not np.isnan(base_ratio) else "—")
+k3.metric("Alert Threshold", f"{ratio_threshold:.2f}")
+k4.metric("Status", status_label(current_ratio, ratio_threshold)[0])
+
+st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
+
+
+# ----------------------------
+# Page renderers
+# ----------------------------
+def render_overview():
+    st.subheader("Overview")
 
     current_rev = float(latest.get("Revenue_USD", np.nan))
     current_liab = float(latest.get("Total_Liabilities_USD", np.nan))
-    current_ratio = float(latest.get("Debt_to_Income", np.nan))
-    current_opex = float(latest.get("Total_Operating_Expenses_USD", np.nan))
     current_opinc = float(latest.get("Operating_Income_USD", np.nan))
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.metric("Latest Quarterly Revenue", money(current_rev))
-    with c2:
-        st.metric("Latest Total Liabilities", money(current_liab))
-    with c3:
-        st.metric("Debt-to-Income (Liabilities ÷ Revenue)", f"{current_ratio:,.2f}" if not np.isnan(current_ratio) else "—")
-    with c4:
-        st.metric("Operating Income", money(current_opinc))
-
-    st.markdown("")
+    a, b, c, d = st.columns(4)
+    a.metric("Latest Quarterly Revenue", money(current_rev))
+    b.metric("Latest Total Liabilities", money(current_liab))
+    c.metric("Debt-to-Income", f"{current_ratio:,.2f}" if not np.isnan(current_ratio) else "—")
+    d.metric("Operating Income", money(current_opinc))
 
     left, right = st.columns([2, 1])
 
     with left:
-        # Trend chart: Revenue + Liabilities + Ratio (secondary)
         fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=df_q["Date"], y=df_q["Revenue_USD"],
-            mode="lines+markers", name="Revenue"
-        ))
-        fig.add_trace(go.Scatter(
-            x=df_q["Date"], y=df_q["Total_Liabilities_USD"],
-            mode="lines+markers", name="Total Liabilities"
-        ))
-        fig.update_layout(
-            title="Revenue vs Total Liabilities (Quarterly)",
-            template="plotly_dark",
-            height=420
-        )
+        fig.add_trace(go.Scatter(x=df_q["Date"], y=df_q["Revenue_USD"], mode="lines+markers", name="Revenue"))
+        fig.add_trace(go.Scatter(x=df_q["Date"], y=df_q["Total_Liabilities_USD"], mode="lines+markers", name="Total Liabilities"))
+        fig.update_layout(title="Revenue vs Total Liabilities (Quarterly)", template="plotly_dark", height=420)
         st.plotly_chart(fig, use_container_width=True)
 
-        fig2 = px.line(
-            df_q, x="Date", y="Debt_to_Income",
-            title="Debt-to-Income Trend (Liabilities ÷ Revenue)",
-        )
+        fig2 = px.line(df_q, x="Date", y="Debt_to_Income", title="Debt-to-Income Trend (Liabilities ÷ Revenue)")
         fig2.update_layout(template="plotly_dark", height=360)
         fig2.add_hline(y=ratio_threshold, line_dash="dash", annotation_text="Alert threshold")
         st.plotly_chart(fig2, use_container_width=True)
 
     with right:
         st.markdown("<div class='cw-card'>", unsafe_allow_html=True)
-        st.subheader("KPI Definition")
-        st.markdown(
-            """
-            **Debt-to-Income (proxy)** = **Total Liabilities ÷ Revenue**  
-            - Higher is worse (more liabilities per $1 of revenue)  
-            - Goal: improve by **increasing revenue**, **reducing liabilities**, and/or **improving operating efficiency**
-            """,
-        )
+        st.markdown("### Executive notes")
         if not np.isnan(current_ratio):
             if current_ratio >= ratio_threshold:
-                st.markdown(f"<span class='cw-warn'>Alert:</span> Current ratio **{current_ratio:.2f}** ≥ threshold **{ratio_threshold:.2f}**.", unsafe_allow_html=True)
+                st.markdown(
+                    f"<span class='cw-danger'>Needs action:</span> DTI {current_ratio:.2f} is above threshold {ratio_threshold:.2f}.",
+                    unsafe_allow_html=True,
+                )
+            elif current_ratio >= ratio_threshold * 0.9:
+                st.markdown(
+                    f"<span class='cw-warn'>Watch:</span> DTI {current_ratio:.2f} is near threshold {ratio_threshold:.2f}.",
+                    unsafe_allow_html=True,
+                )
             else:
-                st.markdown(f"Current ratio **{current_ratio:.2f}** is below threshold **{ratio_threshold:.2f}**.")
-
+                st.markdown(f"DTI {current_ratio:.2f} is below threshold {ratio_threshold:.2f}.")
         st.markdown("---")
-        st.subheader("Data Preview (Quarterly)")
-        st.dataframe(
-            df_q[["Period", "Date", "Revenue_USD", "Total_Liabilities_USD", "Debt_to_Income",
-                  "Technology_Infra_USD", "Total_Operating_Expenses_USD", "Operating_Income_USD"]]
-            .sort_values("Date", ascending=False),
-            use_container_width=True,
-            height=300
-        )
+        with st.expander("View underlying quarterly data", expanded=False):
+            preview_cols = [c for c in [
+                "Period", "Date", "Revenue_USD", "Total_Liabilities_USD", "Debt_to_Income",
+                "Technology_Infra_USD", "Total_Operating_Expenses_USD", "Operating_Income_USD",
+            ] if c in df_q.columns]
+            st.dataframe(
+                df_q[preview_cols].sort_values("Date", ascending=False),
+                use_container_width=True,
+                height=340,
+            )
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Download cleaned quarterly data
     csv = df_q.to_csv(index=False).encode("utf-8")
     st.download_button(
         "Download cleaned quarterly dataset (CSV)",
         data=csv,
         file_name="coreweave_quarterly_clean.csv",
-        mime="text/csv"
+        mime="text/csv",
     )
 
-# ----------------------------
-# Predictive tab
-# ----------------------------
-with tab2:
-    st.subheader("Predictive Approach: Time-series style forecasting with Ridge Regression")
 
-    st.markdown(
-        """
-        **Why this model?**
-        - The dataset is quarterly and relatively small, so a simple, explainable model is appropriate.
-        - We include a time index (**t**) and **Quarter** dummies to capture trend + seasonality.
-        - **Ridge regression** helps stabilize coefficients and reduce overfitting when features correlate (common in financial statements).
+def render_forecast():
+    st.subheader("Forecast")
 
-        **What is being predicted?**
-        - Next-quarter **Total Liabilities**
-        - Next-quarter **Revenue**
-        - Derived: next-quarter **Debt-to-Income** (Liabilities ÷ Revenue)
-        """
-    )
+    left, right = st.columns([1, 3], vertical_alignment="top")
 
-    # Backtest + forecast for liabilities
-    bt_liab = time_series_backtest(df_q, "Total_Liabilities_USD", min_train=backtest_min_train)
-    bt_rev = time_series_backtest(df_q, "Revenue_USD", min_train=backtest_min_train)
-
-    if bt_liab is None or bt_rev is None:
-        st.warning("Not enough clean quarterly data to run the backtest/forecast (need more quarters with non-missing fields).")
-    else:
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric("Liabilities MAE", money(bt_liab["mae"]))
-            st.metric("Liabilities RMSE", money(bt_liab["rmse"]))
-        with c2:
-            st.metric("Liabilities MAPE", pct(bt_liab["mape"]))
-            st.metric("Revenue MAE", money(bt_rev["mae"]))
-        with c3:
-            st.metric("Revenue RMSE", money(bt_rev["rmse"]))
-            st.metric("Revenue MAPE", pct(bt_rev["mape"]))
-
-        st.caption(
-            "Evaluation uses an expanding-window backtest (walk-forward). "
-            "MAE/RMSE are in USD; MAPE is percent error. Lower is better."
-        )
-
-        # Plot Actual vs Predicted (backtest)
-        colA, colB = st.columns(2)
-
-        with colA:
-            fig = go.Figure()
-            s = bt_liab["series"]
-            fig.add_trace(go.Scatter(x=s["Date"], y=s["Actual"], mode="lines+markers", name="Actual"))
-            fig.add_trace(go.Scatter(x=s["Date"], y=s["Predicted"], mode="lines+markers", name="Predicted"))
-            fig.update_layout(title="Backtest: Total Liabilities (Actual vs Predicted)", template="plotly_dark", height=420)
-            st.plotly_chart(fig, use_container_width=True)
-
-        with colB:
-            fig = go.Figure()
-            s = bt_rev["series"]
-            fig.add_trace(go.Scatter(x=s["Date"], y=s["Actual"], mode="lines+markers", name="Actual"))
-            fig.add_trace(go.Scatter(x=s["Date"], y=s["Predicted"], mode="lines+markers", name="Predicted"))
-            fig.update_layout(title="Backtest: Revenue (Actual vs Predicted)", template="plotly_dark", height=420)
-            st.plotly_chart(fig, use_container_width=True)
-
-        # Fit on all and forecast next quarter
-        fc_liab = fit_and_forecast_next(df_q, "Total_Liabilities_USD")
-        fc_rev = fit_and_forecast_next(df_q, "Revenue_USD")
-
-        if fc_liab and fc_rev:
-            next_ratio = safe_div(fc_liab["next_pred"], fc_rev["next_pred"])
-            st.markdown("### Next-Quarter Forecast (Baseline)")
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.metric("Forecast Revenue", money(fc_rev["next_pred"]))
-            with c2:
-                st.metric("Forecast Total Liabilities", money(fc_liab["next_pred"]))
-            with c3:
-                st.metric("Forecast Debt-to-Income", f"{next_ratio:,.2f}" if not np.isnan(next_ratio) else "—")
-
-            st.caption(
-                "Baseline forecast holds expense drivers roughly constant at the latest observed quarter "
-                "(trend + seasonality still apply). Use the Prescriptive tab to change assumptions."
-            )
-
-# ----------------------------
-# Prescriptive tab
-# ----------------------------
-with tab3:
-    st.subheader("Prescriptive Approach: Scenario Simulator + Decision Rules")
-    st.markdown(
-        """
-        This section turns predictions into **actionable levers** to improve the Debt-to-Income ratio.
-
-        **Levers (simple, explainable):**
-        - **Revenue growth** (pricing, utilization, long-term contracts)
-        - **Operating expense change** (discipline on non-core spend)
-        - **Liability paydown/refinancing effect** (term improvements or targeted reduction)
-
-        We recompute a projected next-quarter ratio:
-        \n- Projected Revenue = baseline revenue forecast × (1 + growth %)
-        \n- Projected Liabilities = baseline liabilities forecast × (1 - paydown %)  *(conceptual refinancing/paydown lever)*
-        \n- Projected Debt-to-Income = projected liabilities ÷ projected revenue
-        """
-    )
-
-    # Need baseline forecast to anchor scenarios
-    fc_liab = fit_and_forecast_next(df_q, "Total_Liabilities_USD")
-    fc_rev = fit_and_forecast_next(df_q, "Revenue_USD")
-
-    if not (fc_liab and fc_rev):
-        st.warning("Not enough data to create baseline forecasts for prescriptive scenarios.")
-    else:
-        base_rev = float(fc_rev["next_pred"])
-        base_liab = float(fc_liab["next_pred"])
-        base_ratio = safe_div(base_liab, base_rev)
-
-        st.markdown("#### Scenario Controls")
-        s1, s2, s3 = st.columns(3)
-        with s1:
-            rev_growth = st.slider("Revenue growth (%)", -10.0, 60.0, 10.0, 0.5)
-        with s2:
-            opex_change = st.slider("OpEx change (%) (conceptual)", -40.0, 20.0, -5.0, 0.5)
-        with s3:
-            liab_paydown = st.slider("Liabilities paydown / refinancing effect (%)", 0.0, 30.0, 5.0, 0.5)
-
-        proj_rev = base_rev * (1.0 + rev_growth / 100.0)
-
-        # Optional: tie OpEx to liabilities in a LIGHT conceptual way (transparent):
-        # If OpEx is cut, assume slightly reduced liability growth pressure.
-        # This is not "ML", just a business rule.
-        opex_factor = 1.0 - (max(0.0, -opex_change) / 100.0) * 0.10  # 10% of OpEx cut translates to less liability pressure
-        proj_liab = base_liab * (1.0 - liab_paydown / 100.0) * opex_factor
-
-        proj_ratio = safe_div(proj_liab, proj_rev)
-
-        k1, k2, k3, k4 = st.columns(4)
-        with k1:
-            st.metric("Baseline Forecast Revenue", money(base_rev))
-        with k2:
-            st.metric("Baseline Forecast Liabilities", money(base_liab))
-        with k3:
-            st.metric("Baseline Debt-to-Income", f"{base_ratio:,.2f}" if not np.isnan(base_ratio) else "—")
-        with k4:
-            delta = (proj_ratio - base_ratio) if (not np.isnan(proj_ratio) and not np.isnan(base_ratio)) else np.nan
-            st.metric("Scenario Debt-to-Income", f"{proj_ratio:,.2f}" if not np.isnan(proj_ratio) else "—",
-                      f"{delta:+.2f}" if not np.isnan(delta) else None)
-
-        # Gauge visualization
-        gauge = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=float(proj_ratio) if not np.isnan(proj_ratio) else 0.0,
-            title={"text": "Projected Debt-to-Income"},
-            gauge={
-                "axis": {"range": [0, 3.0]},
-                "threshold": {"line": {"color": CW_WARN, "width": 4}, "value": ratio_threshold},
-                "steps": [
-                    {"range": [0, 1.0], "color": "rgba(47, 91, 234, 0.25)"},
-                    {"range": [1.0, ratio_threshold], "color": "rgba(255, 176, 32, 0.15)"},
-                    {"range": [ratio_threshold, 3.0], "color": "rgba(255, 0, 0, 0.12)"},
-                ],
-            },
-        ))
-        gauge.update_layout(template="plotly_dark", height=280)
-        st.plotly_chart(gauge, use_container_width=True)
-
-        st.markdown("#### Recommendation Engine (If–Then Rules)")
-        current_ratio = float(df_q.sort_values("Date").iloc[-1]["Debt_to_Income"])
-        recs = rule_recommendation(current_ratio, proj_ratio, (rev_growth, opex_change, liab_paydown))
-        for r in recs:
-            st.write(f"• {r}")
-
-        st.markdown("---")
-        st.markdown("#### Scenario Comparison (Quick Grid)")
-        # A small comparison table across a few canned scenarios
-        scenarios = [
-            ("Baseline", 0.0, 0.0, 0.0),
-            ("Revenue push", 20.0, 0.0, 0.0),
-            ("OpEx discipline", 10.0, -10.0, 0.0),
-            ("Refinance/paydown", 10.0, 0.0, 10.0),
-            ("Balanced", 15.0, -10.0, 10.0),
-        ]
-
-        rows = []
-        for name, rg, oc, lp in scenarios:
-            pr = base_rev * (1 + rg / 100.0)
-            of = 1.0 - (max(0.0, -oc) / 100.0) * 0.10
-            pl = base_liab * (1 - lp / 100.0) * of
-            rr = safe_div(pl, pr)
-            rows.append({
-                "Scenario": name,
-                "Revenue growth %": rg,
-                "OpEx change %": oc,
-                "Liab paydown %": lp,
-                "Projected Revenue": pr,
-                "Projected Liabilities": pl,
-                "Projected DTI": rr
-            })
-
-        scen_df = pd.DataFrame(rows)
-        st.dataframe(
-            scen_df.style.format({
-                "Projected Revenue": "${:,.0f}",
-                "Projected Liabilities": "${:,.0f}",
-                "Projected DTI": "{:,.2f}"
-            }),
-            use_container_width=True
-        )
-
-# ----------------------------
-# Insights tab
-# ----------------------------
-with tab4:
-    st.subheader("Insights & Decision Implications")
-    st.markdown(
-        """
-        This section is written for stakeholder decision-making: **what it means**, **what to do**, and **what could go wrong**.
-        """
-    )
-
-    latest = df_q.sort_values("Date").iloc[-1]
-    current_ratio = float(latest.get("Debt_to_Income", np.nan))
-
-    # Simple driver view: correlations with liabilities & DTI (directional, not causal)
-    driver_cols = [c for c in [
-        "Technology_Infra_USD",
-        "Total_Operating_Expenses_USD",
-        "Operating_Income_USD",
-        "Revenue_USD",
-        "Cost_of_Revenue_USD",
-        "Sales_Marketing_USD",
-        "General_Admin_USD"
-    ] if c in df_q.columns]
-
-    corr_block = df_q[driver_cols + ["Total_Liabilities_USD", "Debt_to_Income"]].corr(numeric_only=True)
-    corr_liab = corr_block["Total_Liabilities_USD"].dropna().sort_values(ascending=False)
-    corr_dti = corr_block["Debt_to_Income"].dropna().sort_values(ascending=False)
-
-    c1, c2 = st.columns(2)
-
-    with c1:
+    with left:
         st.markdown("<div class='cw-card'>", unsafe_allow_html=True)
-        st.markdown("### Key Finding: Current Debt-to-Income")
-        if not np.isnan(current_ratio):
-            st.write(f"Latest Debt-to-Income (Liabilities ÷ Revenue): **{current_ratio:.2f}**")
-            if current_ratio >= ratio_threshold:
-                st.write(f"Status: **Above** the alert threshold of **{ratio_threshold:.2f}** → focus on reducing liabilities and/or accelerating revenue.")
-            else:
-                st.write(f"Status: **Below** the threshold of **{ratio_threshold:.2f}**, but still monitor growth of liabilities relative to revenue.")
-        else:
-            st.write("Debt-to-Income is not available for the latest quarter due to missing liabilities or revenue data.")
+        st.markdown("### How to use")
+        st.write("Directional baseline forecast for next quarter.")
+        st.write("Use Scenario Planner to test interventions.")
+        st.markdown("---")
+
+        st.markdown("### Baseline next quarter")
+        st.metric("Forecast Revenue", money(base_rev))
+        st.metric("Forecast Liabilities", money(base_liab))
+        st.metric("Forecast DTI", f"{base_ratio:,.2f}" if not np.isnan(base_ratio) else "—")
 
         st.markdown("---")
-        st.markdown("### Directional Drivers (Correlation)")
-        st.caption("Correlation is not causation; use as directional signal.")
-        st.write("**Strongest correlations with Total Liabilities:**")
-        for k, v in corr_liab.head(5).items():
-            st.write(f"• {k}: {v:,.2f}")
+        bt_liab = time_series_backtest(df_q, "Total_Liabilities_USD", min_train=backtest_min_train)
+        bt_rev = time_series_backtest(df_q, "Revenue_USD", min_train=backtest_min_train)
 
-        st.write("**Strongest correlations with Debt-to-Income:**")
-        for k, v in corr_dti.head(5).items():
-            st.write(f"• {k}: {v:,.2f}")
+        st.markdown("### Reliability")
+        st.metric("Revenue MAPE", pct(bt_rev["mape"]) if bt_rev else "—")
+        st.metric("Liabilities MAPE", pct(bt_liab["mape"]) if bt_liab else "—")
+        st.caption("MAPE = average percent error.")
         st.markdown("</div>", unsafe_allow_html=True)
 
-    with c2:
-        # Scatter: Revenue vs Liabilities with DTI color
+    with right:
+        bt_liab = time_series_backtest(df_q, "Total_Liabilities_USD", min_train=backtest_min_train)
+        bt_rev = time_series_backtest(df_q, "Revenue_USD", min_train=backtest_min_train)
+
+        if bt_rev:
+            s = bt_rev["series"]
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=s["Date"], y=s["Actual"], mode="lines+markers", name="Actual"))
+            fig.add_trace(go.Scatter(x=s["Date"], y=s["Predicted"], mode="lines+markers", name="Predicted"))
+            fig.update_layout(title="Backtest: Revenue (Actual vs Predicted)", template="plotly_dark", height=380)
+            st.plotly_chart(fig, use_container_width=True)
+
+        if bt_liab:
+            s = bt_liab["series"]
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=s["Date"], y=s["Actual"], mode="lines+markers", name="Actual"))
+            fig.add_trace(go.Scatter(x=s["Date"], y=s["Predicted"], mode="lines+markers", name="Predicted"))
+            fig.update_layout(title="Backtest: Total Liabilities (Actual vs Predicted)", template="plotly_dark", height=380)
+            st.plotly_chart(fig, use_container_width=True)
+
+
+def render_scenario_planner():
+    st.subheader("Scenario Planner (If X, then Y)")
+
+    if np.isnan(base_rev) or np.isnan(base_liab) or np.isnan(base_ratio):
+        st.warning("Baseline forecasts are unavailable (not enough clean data).")
+        return
+
+    left, right = st.columns([1, 3], vertical_alignment="top")
+
+    with left:
+        st.markdown("<div class='cw-card'>", unsafe_allow_html=True)
+        st.markdown("### Scenario inputs")
+
+        p1, p2, p3 = st.columns(3)
+        if p1.button("Conservative", use_container_width=True):
+            st.session_state.rev_growth = 8.0
+            st.session_state.opex_change = -3.0
+            st.session_state.liab_paydown = 3.0
+        if p2.button("Balanced", use_container_width=True):
+            st.session_state.rev_growth = 15.0
+            st.session_state.opex_change = -8.0
+            st.session_state.liab_paydown = 8.0
+        if p3.button("Aggressive", use_container_width=True):
+            st.session_state.rev_growth = 25.0
+            st.session_state.opex_change = -12.0
+            st.session_state.liab_paydown = 12.0
+
+        rev_growth = st.slider("Revenue growth (%)", -10.0, 60.0, float(st.session_state.get("rev_growth", 15.0)), 0.5)
+        opex_change = st.slider("OpEx change (%)", -40.0, 20.0, float(st.session_state.get("opex_change", -8.0)), 0.5)
+        liab_paydown = st.slider("Liabilities improvement (%)", 0.0, 30.0, float(st.session_state.get("liab_paydown", 8.0)), 0.5)
+
+        proj_rev = base_rev * (1.0 + rev_growth / 100.0)
+        opex_factor = 1.0 - (max(0.0, -opex_change) / 100.0) * 0.10
+        proj_liab = base_liab * (1.0 - liab_paydown / 100.0) * opex_factor
+        proj_ratio = safe_div(proj_liab, proj_rev)
+
+        st.markdown("---")
+        st.markdown("### Scenario output")
+        st.metric(f"Scenario DTI ({next_label})", f"{proj_ratio:,.2f}" if not np.isnan(proj_ratio) else "—")
+        delta = proj_ratio - base_ratio if not (np.isnan(proj_ratio) or np.isnan(base_ratio)) else np.nan
+        st.metric("Change vs baseline", f"{delta:+.2f}" if not np.isnan(delta) else "—")
+
+        scen_status, scen_sub = status_label(proj_ratio, ratio_threshold)
+        st.write(f"**Status:** {scen_status}")
+        st.caption(scen_sub)
+
+        st.markdown("---")
+        st.markdown("### Recommendations")
+        recs = rule_recommendation(proj_ratio, (rev_growth, opex_change, liab_paydown), ratio_threshold)
+        for r in recs[:3]:
+            st.write(f"• {r}")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with right:
+        st.markdown("### If X, then Y")
+        st.markdown(
+            f"""
+            **If** revenue grows by **{rev_growth:.1f}%**, OpEx changes by **{opex_change:.1f}%**, and liabilities improve by **{liab_paydown:.1f}%**,  
+            **then** next-quarter Debt-to-Income is projected to be **{proj_ratio:.2f}** (baseline: **{base_ratio:.2f}**).
+            """
+        )
+
+        d1, d2, d3 = st.columns(3)
+        d1.metric("Scenario Revenue", money(proj_rev), money(proj_rev - base_rev))
+        d2.metric("Scenario Liabilities", money(proj_liab), money(proj_liab - base_liab))
+        d3.metric("Scenario DTI", f"{proj_ratio:,.2f}" if not np.isnan(proj_ratio) else "—", f"{delta:+.2f}" if not np.isnan(delta) else None)
+
+        gcol, bcol = st.columns([1, 1])
+
+        with gcol:
+            gauge = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=float(proj_ratio) if not np.isnan(proj_ratio) else 0.0,
+                title={"text": "Projected Debt-to-Income"},
+                gauge={
+                    "axis": {"range": [0, 3.0]},
+                    "threshold": {"line": {"color": CW_WARN, "width": 4}, "value": ratio_threshold},
+                    "steps": [
+                        {"range": [0, 1.0], "color": "rgba(47, 91, 234, 0.25)"},
+                        {"range": [1.0, ratio_threshold], "color": "rgba(255, 176, 32, 0.15)"},
+                        {"range": [ratio_threshold, 3.0], "color": "rgba(255, 0, 0, 0.10)"},
+                    ],
+                },
+            ))
+            gauge.update_layout(template="plotly_dark", height=320)
+            st.plotly_chart(gauge, use_container_width=True)
+
+        with bcol:
+            compare = pd.DataFrame({"Type": ["Baseline", "Scenario"], "Debt-to-Income": [base_ratio, proj_ratio]})
+            fig = px.bar(compare, x="Type", y="Debt-to-Income", title="Baseline vs Scenario DTI")
+            fig.update_layout(template="plotly_dark", height=320)
+            fig.add_hline(y=ratio_threshold, line_dash="dash", annotation_text="Threshold")
+            st.plotly_chart(fig, use_container_width=True)
+
+
+def render_3d_viewer():
+    st.subheader("Data Center 3D Viewer")
+
+    _fbx_files = {p.stem: p for p in sorted(MODELS_DIR.glob("*.fbx"))} if MODELS_DIR.exists() else {}
+
+    if _fbx_files:
+        selected_model = st.selectbox("Select Data Center", options=list(_fbx_files.keys()))
+        fbx_b64 = base64.b64encode(_fbx_files[selected_model].read_bytes()).decode()
+
+        threejs_html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <style>
+          body { margin: 0; overflow: hidden; background: #000; }
+          canvas { display: block; width: 100%%; height: 100%%; }
+          #loading {
+            position: absolute; top: 50%%; left: 50%%;
+            transform: translate(-50%%, -50%%);
+            color: rgba(249,250,252,0.6); font-family: sans-serif;
+            font-size: 14px;
+          }
+          #controls-hint {
+            position: absolute; bottom: 12px; left: 50%%;
+            transform: translateX(-50%%);
+            color: rgba(249,250,252,0.45); font-family: sans-serif;
+            font-size: 12px; pointer-events: none; user-select: none;
+          }
+          #error-msg {
+            position: absolute; top: 50%%; left: 50%%;
+            transform: translate(-50%%, -50%%);
+            color: #FB7185; font-family: sans-serif;
+            font-size: 14px; display: none; text-align: center;
+          }
+        </style>
+        </head>
+        <body>
+        <div id="loading">Loading 3D model...</div>
+        <div id="error-msg"></div>
+        <div id="controls-hint">Drag to rotate &middot; Scroll to zoom &middot; Right-drag to pan</div>
+        <script>
+          var _scripts = [
+            "https://unpkg.com/three@0.99.0/build/three.min.js",
+            "https://unpkg.com/three@0.99.0/examples/js/libs/inflate.min.js",
+            "https://unpkg.com/three@0.99.0/examples/js/controls/OrbitControls.js",
+            "https://unpkg.com/three@0.99.0/examples/js/loaders/FBXLoader.js"
+          ];
+          var _loaded = 0;
+          function _loadNext() {
+            if (_loaded >= _scripts.length) { _init(); return; }
+            var s = document.createElement('script');
+            s.src = _scripts[_loaded];
+            s.onload = function() { _loaded++; _loadNext(); };
+            s.onerror = function() {
+              document.getElementById('loading').style.display = 'none';
+              var el = document.getElementById('error-msg');
+              el.style.display = 'block';
+              el.textContent = 'Failed to load: ' + _scripts[_loaded];
+            };
+            document.head.appendChild(s);
+          }
+          _loadNext();
+
+          function _init() {
+            try {
+              var w = document.body.clientWidth;
+              var h = document.body.clientHeight || 580;
+
+              var scene = new THREE.Scene();
+              scene.background = new THREE.Color(0x000000);
+
+              var camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 10000);
+              camera.position.set(0, 150, 300);
+
+              var renderer = new THREE.WebGLRenderer({ antialias: true });
+              renderer.setSize(w, h);
+              renderer.setPixelRatio(window.devicePixelRatio);
+              renderer.gammaOutput = true;
+              renderer.gammaFactor = 2.2;
+              document.body.appendChild(renderer.domElement);
+
+              scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+              scene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 1.0));
+
+              var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+              dirLight.position.set(200, 400, 200);
+              scene.add(dirLight);
+
+              scene.add(new THREE.GridHelper(600, 40, 0x2741E7, 0x111118));
+
+              var controls = new THREE.OrbitControls(camera, renderer.domElement);
+              controls.enableDamping = true;
+              controls.dampingFactor = 0.05;
+              controls.rotateSpeed = 0.4;
+              controls.zoomSpeed = 0.5;
+              controls.panSpeed = 0.4;
+              controls.minDistance = 50;
+              controls.maxDistance = 2000;
+              controls.target.set(0, 50, 0);
+              controls.update();
+
+              var fbxB64 = "%%FBX_B64%%";
+              var raw = atob(fbxB64);
+              var bytes = new Uint8Array(raw.length);
+              for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+              var blob = new Blob([bytes.buffer]);
+              var blobUrl = URL.createObjectURL(blob);
+
+              var loader = new THREE.FBXLoader();
+              loader.load(blobUrl, function(object) {
+                object.traverse(function(child) {
+                  if (child instanceof THREE.Mesh) {
+                    if (child.geometry) child.geometry.computeVertexNormals();
+                    var geo = child.geometry;
+                    var hasVC = geo && geo.attributes && geo.attributes.color;
+                    var mats = Array.isArray(child.material) ? child.material : [child.material];
+                    var newMats = mats.map(function(m) {
+                      var opts = { side: THREE.DoubleSide };
+                      if (m.map) {
+                        opts.map = m.map;
+                        opts.color = new THREE.Color(0xffffff);
+                      } else if (hasVC) {
+                        opts.vertexColors = THREE.VertexColors;
+                        opts.color = new THREE.Color(0xffffff);
+                      } else {
+                        opts.color = (m.color && (m.color.r + m.color.g + m.color.b) > 0.05)
+                          ? m.color : new THREE.Color(0xaaaaaa);
+                      }
+                      return new THREE.MeshBasicMaterial(opts);
+                    });
+                    child.material = newMats.length === 1 ? newMats[0] : newMats;
+                  }
+                });
+
+                var box = new THREE.Box3().setFromObject(object);
+                var size = box.getSize(new THREE.Vector3());
+                var maxDim = Math.max(size.x, size.y, size.z);
+                if (maxDim > 0) {
+                  var scale = 200 / maxDim;
+                  object.scale.multiplyScalar(scale);
+                }
+
+                box.setFromObject(object);
+                var center = box.getCenter(new THREE.Vector3());
+                size = box.getSize(new THREE.Vector3());
+                object.position.sub(center);
+                object.position.y += size.y / 2;
+
+                scene.add(object);
+
+                camera.position.set(250, 180, 250);
+                controls.target.set(0, size.y / 2, 0);
+                controls.update();
+
+                document.getElementById('loading').style.display = 'none';
+                URL.revokeObjectURL(blobUrl);
+              }, undefined, function(err) {
+                document.getElementById('loading').style.display = 'none';
+                var el = document.getElementById('error-msg');
+                el.style.display = 'block';
+                el.textContent = 'Failed to load model: ' + (err.message || err);
+              });
+
+              window.addEventListener('resize', function() {
+                var w2 = document.body.clientWidth;
+                var h2 = document.body.clientHeight || 580;
+                camera.aspect = w2 / h2;
+                camera.updateProjectionMatrix();
+                renderer.setSize(w2, h2);
+              });
+
+              function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+              }
+              animate();
+            } catch(e) {
+              document.getElementById('loading').style.display = 'none';
+              var el = document.getElementById('error-msg');
+              el.style.display = 'block';
+              el.textContent = 'Error: ' + e.message;
+            }
+          }
+        </script>
+        </body>
+        </html>
+        """
+
+        import streamlit.components.v1 as components
+        components.html(threejs_html.replace("%%FBX_B64%%", fbx_b64), height=640)
+    else:
+        st.info("No FBX models found in the models/ directory.")
+
+
+def render_recommendations():
+    st.subheader("Recommendations & Risks")
+
+    left, right = st.columns([1, 3], vertical_alignment="top")
+
+    with left:
+        st.markdown("<div class='cw-card'>", unsafe_allow_html=True)
+        st.markdown("### Recommended actions (next 90 days)")
+        if np.isnan(current_ratio):
+            items = [
+                "Validate liabilities and revenue inputs for the latest quarter (DTI missing).",
+                "Once validated, use Scenario Planner to identify a realistic path below the threshold.",
+            ]
+        elif current_ratio >= ratio_threshold:
+            items = [
+                "Liability strategy: refinance/term extension or targeted paydowns to reduce liabilities relative to revenue.",
+                "Revenue quality: prioritize longer-term enterprise commitments + maximize utilization (revenue per infra unit).",
+                "Operating guardrails: freeze discretionary OpEx growth until DTI returns below threshold.",
+            ]
+        elif current_ratio >= ratio_threshold * 0.9:
+            items = [
+                "Tighten approval for debt-funded expansion while DTI is near threshold.",
+                "Focus on utilization, pricing, and contract duration to lift revenue without proportional liability growth.",
+                "Set quarterly trigger: if DTI crosses threshold, require a mitigation plan.",
+            ]
+        else:
+            items = [
+                "Maintain discipline: keep liabilities from outpacing revenue.",
+                "Prioritize expansions with contracted revenue or clear utilization upside.",
+                "Monitor DTI quarterly using the current threshold trigger.",
+            ]
+        for i in items:
+            st.write(f"• {i}")
+
+        st.markdown("---")
+        st.markdown("### Governance triggers")
+        st.write(f"• **Healthy:** DTI < {ratio_threshold*0.9:.2f}")
+        st.write(f"• **Watch:** {ratio_threshold*0.9:.2f} ≤ DTI < {ratio_threshold:.2f}")
+        st.write(f"• **Needs action:** DTI ≥ {ratio_threshold:.2f}")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with right:
         plot_df = df_q.dropna(subset=["Revenue_USD", "Total_Liabilities_USD", "Debt_to_Income"]).copy()
         if len(plot_df) >= 3:
             fig = px.scatter(
@@ -784,51 +881,104 @@ with tab4:
                 y="Total_Liabilities_USD",
                 color="Debt_to_Income",
                 hover_data=["Period", "Date"],
-                title="Revenue vs Liabilities (colored by Debt-to-Income)"
+                title="Revenue vs Liabilities (colored by DTI)",
             )
-            fig.update_layout(template="plotly_dark", height=500)
+            fig.update_layout(template="plotly_dark", height=520)
             st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("Not enough non-missing rows to plot Revenue vs Liabilities scatter.")
 
-    st.markdown("### Recommended Actions to Improve Debt-to-Income")
-    st.markdown(
-        """
-        **Improve the ratio by increasing the denominator (Revenue), decreasing the numerator (Liabilities), and improving efficiency:**
+        st.markdown("### Uncertainty & limitations")
+        st.write("• Data is simulated SEC-style; real-world results can differ.")
+        st.write("• Forecasts assume stable relationships; structural breaks (market/financing) reduce accuracy.")
+        st.write("• Scenario planner uses transparent business rules; use as decision support, not guarantees.")
 
-        **1) Revenue quality & utilization**
-        - Increase GPU utilization and throughput (more revenue per unit of infra).
-        - Prioritize longer-term enterprise commitments to smooth revenue and reduce volatility.
 
-        **2) Operating discipline**
-        - Slow growth in non-core OpEx and align spend with near-term revenue realization.
-        - Use KPI guardrails: *OpEx growth should not exceed revenue growth for extended periods.*
+def render_dictionary():
+    st.subheader("Dictionary (What everything means + how to use this dashboard)")
 
-        **3) Liability strategy**
-        - Explore refinancing, term extensions, or targeted paydowns to lower liabilities relative to revenue.
-        - Consider structuring financing to match asset life cycles (reduces mismatch risk).
+    left, right = st.columns([1, 3], vertical_alignment="top")
 
-        **4) Governance**
-        - Track the ratio quarterly with thresholds and triggers:
-          - If **DTI > threshold**, require an “explain & mitigate” plan.
-          - If **DTI improves 2+ quarters**, cautiously re-accelerate growth.
-        """
-    )
+    with left:
+        st.markdown("<div class='cw-card'>", unsafe_allow_html=True)
+        st.markdown("### Quick Start")
+        st.write("1) Start on **Overview** to see where DTI is today.")
+        st.write("2) Go to **Forecast** to see baseline next-quarter direction.")
+        st.write("3) Use **Scenario Planner** to test decisions: *If X, then Y*.")
+        st.write("4) Review **Recommendations & Risks** for actions + triggers.")
+        st.write("5) Use **3D Viewer** to review model renderings (if provided).")
+        st.markdown("---")
+        st.markdown("### Core KPI")
+        st.write("**Debt-to-Income (DTI)** = **Total Liabilities ÷ Revenue**")
+        st.write("• Lower is better (less liability per $1 of revenue).")
+        st.write("• Improve by increasing revenue, reducing liabilities, or both.")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("### Uncertainty & Limitations")
-    st.markdown(
-        """
-        - The workbook is **simulated SEC-style** financial data; real-world behavior may differ.
-        - The predictive model assumes a stable relationship between time/spend and outcomes; structural breaks (market shifts, financing changes) can reduce accuracy.
-        - Correlations are directional signals, not causal proof.
-        - Scenario simulator uses transparent business rules; treat outputs as **decision support**, not guaranteed outcomes.
-        """
-    )
+    with right:
+        st.markdown("## Key terms & metrics")
 
-    st.markdown("---")
-    st.markdown("### Quick Narrative (for your write-up)")
-    st.write(
-        "CoreWeave can improve its debt-to-income ratio primarily by (1) increasing revenue faster than liabilities through utilization and contract strategy, "
-        "(2) applying operating discipline so expense growth is aligned with realized revenue, and (3) using refinancing/paydown strategies to reduce the liabilities burden. "
-        "The dashboard quantifies the historical ratio, forecasts a baseline next-quarter outcome, and tests scenarios to identify combinations of levers that most improve the ratio."
-    )
+        with st.expander("Debt-to-Income (DTI)", expanded=True):
+            st.write("**Definition:** Total Liabilities ÷ Revenue (quarterly).")
+            st.write("DTI = 1.5 means $1.50 of liabilities for every $1.00 of quarterly revenue.")
+            st.write("Lower is better.")
+
+        with st.expander("Revenue (Revenue_USD)", expanded=False):
+            st.write("Top-line quarterly revenue. Increasing revenue improves DTI (it’s the denominator).")
+
+        with st.expander("Total Liabilities (Total_Liabilities_USD)", expanded=False):
+            st.write("All liabilities on the balance sheet. Reducing liabilities improves DTI (it’s the numerator).")
+
+        with st.expander("Operating Income (Operating_Income_USD)", expanded=False):
+            st.write("Operating profit. Useful signal for ability to pay down liabilities over time.")
+
+        with st.expander("Operating Expenses (Total_Operating_Expenses_USD)", expanded=False):
+            st.write("Total operating costs. In Scenario Planner, OpEx is a conceptual lever that slightly reduces liability pressure when decreased.")
+
+        with st.expander("Forecasting model (Ridge regression)", expanded=False):
+            st.write("Simple, explainable model capturing trend + seasonality (quarter indicators).")
+            st.write("Used to estimate baseline next-quarter revenue and liabilities.")
+
+        with st.expander("Backtest metrics (MAE, RMSE, MAPE)", expanded=False):
+            st.write("Walk-forward error metrics (model is tested on past periods).")
+            st.write("• **MAE**: average absolute error (in dollars).")
+            st.write("• **RMSE**: penalizes large errors more (in dollars).")
+            st.write("• **MAPE**: average percent error (easiest to interpret).")
+
+        st.markdown("## How to use Scenario Planner (If X, then Y)")
+        st.markdown(
+            """
+            **Inputs:**
+            - **Revenue growth (%)**: your assumption about next-quarter revenue improvement.
+            - **OpEx change (%)**: conceptual efficiency lever.
+            - **Liabilities improvement (%)**: paydown/refi effect.
+
+            **Outputs:**
+            - **Scenario DTI** and **Change vs baseline**
+            - Dollar impacts for revenue and liabilities
+            - Status vs threshold + recommended actions
+            """
+        )
+
+        st.markdown("## Limitations")
+        st.markdown(
+            """
+            - Dataset is simulated SEC-style.
+            - Forecast assumes stable relationships; major structural changes reduce accuracy.
+            - Scenario planner is decision support, not a guarantee.
+            """
+        )
+
+
+# ----------------------------
+# Route
+# ----------------------------
+if page == "Overview":
+    render_overview()
+elif page == "Forecast":
+    render_forecast()
+elif page == "Scenario Planner":
+    render_scenario_planner()
+elif page == "3D Viewer":
+    render_3d_viewer()
+elif page == "Recommendations & Risks":
+    render_recommendations()
+else:
+    render_dictionary()
