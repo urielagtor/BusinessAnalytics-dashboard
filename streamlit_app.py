@@ -17,7 +17,7 @@ import math
 import os
 import base64
 from pathlib import Path
-
+import base64
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -28,79 +28,76 @@ from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.linear_model import Ridge
-from sklearn.metrics import mean_absolute_error, mean_squared_error
-from PIL import Image
+from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
 
+st.set_page_config(page_title="CoreWeave | Revenue Dashboard", page_icon="CoreWeave Logo White.svg", layout="wide")
 
+# -----------------------------
+# CoreWeave brand chart palette
+# -----------------------------
+CW_BLUE = "#2741E7"
+CW_CYAN = "#00D4FF"
+CW_VIOLET = "#7B61FF"
+CW_EMERALD = "#34D399"
+CW_AMBER = "#FBBF24"
+CW_ROSE = "#FB7185"
+CW_SKY = "#38BDF8"
 
-# ----------------------------
-# Page config
-# ----------------------------
-favicon = Image.open("favicon.png")
-st.set_page_config(
-    page_title="CoreWeave | Debt-to-Income Strategy Dashboard",
-    page_icon=favicon,
-    layout="wide",
-)
+CHART_PALETTE = [CW_BLUE, CW_CYAN, CW_VIOLET, CW_EMERALD, CW_AMBER, CW_SKY, CW_ROSE]
+PALETTE_SCALE = alt.Scale(range=CHART_PALETTE)
 
-# ----------------------------
-# Branding (CoreWeave-ish)
-# ----------------------------
-CW_ACCENT = "#2F5BEA"
-CW_BG = "#070A12"
-CW_PANEL = "#0E1424"
-CW_TEXT = "#E9ECF5"
-CW_MUTED = "#A7B0C3"
-CW_WARN = "#FFB020"
-CW_DANGER = "#FF4D4D"
-
+# -----------------------------
+# Minimal CSS polish
+# -----------------------------
 st.markdown(
     f"""
     <style>
-      .stApp {{
-        background: linear-gradient(180deg, {CW_BG} 0%, #050712 100%);
-        color: {CW_TEXT};
+      h1 {{
+        font-weight: 700;
+        letter-spacing: -0.025em;
       }}
-      h1,h2,h3,h4 {{ color: {CW_TEXT}; }}
-
-      .cw-badge{{
-        display:inline-block;
-        padding: 6px 10px;
-        border-radius: 999px;
-        background: rgba(47, 91, 234, 0.14);
-        border: 1px solid rgba(47, 91, 234, 0.35);
-        color: {CW_TEXT};
-        font-size: 12px;
-        letter-spacing: 0.2px;
+      h2, h3 {{
+        font-weight: 600;
       }}
-      .cw-card{{
-        background: {CW_PANEL};
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 14px;
-        padding: 14px 16px;
+      div[data-testid="stMetricValue"] {{
+        font-weight: 700;
+        font-size: 1.6rem;
       }}
-      .cw-muted {{ color: {CW_MUTED}; }}
-      .cw-warn {{ color: {CW_WARN}; }}
-      .cw-danger {{ color: {CW_DANGER}; }}
-
-      div[data-testid="metric-container"]{{
-        background: {CW_PANEL};
-        border: 1px solid rgba(255,255,255,0.08);
-        padding: 14px 16px;
-        border-radius: 14px;
+      div[data-testid="stMetricLabel"] {{
+        font-weight: 500;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+      }}
+      .cw-accent {{
+        height: 4px;
+        width: 48px;
+        background: linear-gradient(90deg, {CW_BLUE}, {CW_CYAN});
+        border-radius: 2px;
+        margin: 0 0 1.5rem 0;
       }}
 
-      /* Sidebar styling polish */
-      [data-testid="stSidebar"] {{
-        background: rgba(14, 20, 36, 0.85);
-        border-right: 1px solid rgba(255,255,255,0.08);
+      /* Sidebar styling */
+      section[data-testid="stSidebar"] {{
+        border-right: 1px solid rgba(255, 255, 255, 0.06);
       }}
-      .cw-divider {{
-        height: 1px;
-        background: rgba(255,255,255,0.10);
-        margin: 10px 0 18px 0;
+      section[data-testid="stSidebar"] [data-testid="stSidebarHeader"] {{
+        padding-bottom: 0.75rem;
+      }}
+      section[data-testid="stSidebar"] h1 {{
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: rgba(249, 250, 252, 0.5);
+      }}
+      section[data-testid="stSidebar"] .stSlider label,
+      section[data-testid="stSidebar"] .stMultiSelect label,
+      section[data-testid="stSidebar"] .stCheckbox label {{
+        font-size: 0.8rem;
+        letter-spacing: 0.02em;
       }}
     </style>
+    <div class="cw-accent"></div>
     """,
     unsafe_allow_html=True,
 )
@@ -389,16 +386,54 @@ with st.sidebar:
 
     st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
 
-    st.markdown("### Controls")
-    ratio_threshold = st.slider(
-        "DTI alert threshold",
-        0.5, 3.0, 1.2, 0.1,
-        help="If DTI exceeds this threshold, the dashboard flags it as requiring mitigation.",
+def altair_multiline(df_in: pd.DataFrame, x_col: str, y_cols: list[str], title: str, y_title: str = ""):
+    long = df_in[[x_col] + y_cols].melt(id_vars=[x_col], var_name="Series", value_name="Value")
+    chart = (
+        alt.Chart(long)
+        .mark_line(point=True)
+        .encode(
+            x=alt.X(f"{x_col}:T", title="Month"),
+            y=alt.Y("Value:Q", title=y_title),
+            color=alt.Color("Series:N", scale=PALETTE_SCALE, legend=alt.Legend(title="")),
+            tooltip=[alt.Tooltip(f"{x_col}:T", title="Month"), "Series:N", alt.Tooltip("Value:Q", format=",.2f")],
+        )
+        .properties(title=title, height=320)
+        .interactive()
     )
-    backtest_min_train = st.slider(
-        "Backtest min training quarters",
-        4, 12, 6, 1,
-        help="Higher values can stabilize backtests but reduce the number of backtest points.",
+    return chart
+
+
+def altair_area_stacked(df_in: pd.DataFrame, x_col: str, cols: list[str], title: str, y_title: str = ""):
+    long = df_in[[x_col] + cols].melt(id_vars=[x_col], var_name="Series", value_name="Value")
+    chart = (
+        alt.Chart(long)
+        .mark_area(opacity=0.7, line=True)
+        .encode(
+            x=alt.X(f"{x_col}:T", title="Month"),
+            y=alt.Y("Value:Q", stack="zero", title=y_title),
+            color=alt.Color("Series:N", scale=PALETTE_SCALE, legend=alt.Legend(title="")),
+            tooltip=[alt.Tooltip(f"{x_col}:T", title="Month"), "Series:N", alt.Tooltip("Value:Q", format=",.0f")],
+        )
+        .properties(title=title, height=320)
+        .interactive()
+    )
+    return chart
+
+
+def altair_bar_grouped(df_in: pd.DataFrame, x_col: str, cols: list[str], title: str, y_title: str = ""):
+    long = df_in[[x_col] + cols].melt(id_vars=[x_col], var_name="Series", value_name="Value")
+    chart = (
+        alt.Chart(long)
+        .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
+        .encode(
+            x=alt.X(f"{x_col}:T", title="Month"),
+            xOffset=alt.XOffset("Series:N"),
+            y=alt.Y("Value:Q", title=y_title),
+            color=alt.Color("Series:N", scale=PALETTE_SCALE, legend=alt.Legend(title="")),
+            tooltip=[alt.Tooltip(f"{x_col}:T", title="Month"), "Series:N", alt.Tooltip("Value:Q", format=",.0f")],
+        )
+        .properties(title=title, height=320)
+        .interactive()
     )
 
     st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
@@ -408,12 +443,16 @@ with st.sidebar:
     st.write(f"**Status:** {status}")
     st.caption(status_sub)
 
-# ----------------------------
-# Main Header + Executive Summary
-# ----------------------------
-st.markdown("<span class='cw-badge'>Executive Decision Dashboard</span>", unsafe_allow_html=True)
-st.title("Debt-to-Income Strategy Dashboard")
-st.caption("Goal: improve Debt-to-Income (Total Liabilities ÷ Revenue) using forecasts + what-if scenarios.")
+# Sidebar logo
+_logo_path = Path(__file__).parent / "CoreWeave Logo White.svg"
+if _logo_path.exists():
+    _logo_b64 = base64.b64encode(_logo_path.read_bytes()).decode()
+    st.sidebar.markdown(
+        f'<img src="data:image/svg+xml;base64,{_logo_b64}" style="width:160px;margin-bottom:1.5rem;">',
+        unsafe_allow_html=True,
+    )
+
+st.title("CoreWeave Revenue & Customer Trends Dashboard")
 
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Current DTI", f"{current_ratio:,.2f}" if not np.isnan(current_ratio) else "—")
@@ -981,4 +1020,272 @@ elif page == "3D Viewer":
 elif page == "Recommendations & Risks":
     render_recommendations()
 else:
-    render_dictionary()
+    st.info("Select at least one metric in the sidebar to display the line chart.")
+
+st.subheader("Customer Movement")
+st.altair_chart(
+    altair_bar_grouped(
+        fdf, "Month",
+        ["New_Customers", "Churned_Customers", "Net_Customers"],
+        "New vs Churned vs Net Customers",
+        "Customers"
+    ),
+    use_container_width=True
+)
+
+# Table
+if show_table:
+    st.subheader("Filtered Data Table")
+    st.dataframe(fdf, use_container_width=True, hide_index=True)
+
+# Predictive modeling
+st.divider()
+st.header("Predictive Modeling (Forecast)")
+
+target = st.selectbox(
+    "Select a metric to forecast",
+    options=[
+        "Total_Revenue_USD",
+        "Subscription_Revenue_USD",
+        "API_Revenue_USD",
+        "Units",
+        "New_Customers",
+        "Churned_Customers",
+        "Net_Customers",
+        "Gross_Profit_USD",
+        "Gross_Margin_%",
+    ],
+    index=0,
+)
+
+horizon = st.slider("Forecast horizon (months)", 3, 24, 6)
+alpha = st.slider("Model regularization (alpha)", 0.1, 50.0, 1.0)
+test_months = st.slider("Backtest window (months)", 0, 24, 12)
+
+forecast_df, metrics = fit_forecast(df, target_col=target, horizon=horizon, alpha=alpha, test_months=test_months)
+
+m1, m2, m3 = st.columns(3)
+m1.metric("Backtest months", f"{metrics.get('Backtest_Months', 0)}")
+m2.metric("Backtest MAE", "—" if "MAE" not in metrics else f"{metrics['MAE']:,.0f}")
+mape = metrics.get("MAPE")
+m3.metric("Backtest MAPE", "—" if mape is None else f"{mape:,.2f}%")
+
+st.subheader("Actual vs Fitted vs Forecast")
+
+st.altair_chart(
+    altair_multiline(
+        forecast_df.drop(columns=[], errors="ignore"),
+        "Month",
+        ["Actual", "Fitted", "Forecast"],
+        f"{target}: Actual / Fitted / Forecast",
+        ""
+    ),
+    use_container_width=True
+)
+
+# -----------------------------
+# 3D Data Center Viewer
+# -----------------------------
+st.divider()
+st.header("Data Center 3D Viewer")
+
+_models_dir = Path(__file__).parent / "models"
+_fbx_files = {p.stem: p for p in sorted(_models_dir.glob("*.fbx"))} if _models_dir.exists() else {}
+
+if _fbx_files:
+    selected_model = st.selectbox("Select Data Center", options=list(_fbx_files.keys()))
+    fbx_b64 = base64.b64encode(_fbx_files[selected_model].read_bytes()).decode()
+
+    threejs_html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <style>
+      body { margin: 0; overflow: hidden; background: #000; }
+      canvas { display: block; width: 100%%; height: 100%%; }
+      #loading {
+        position: absolute; top: 50%%; left: 50%%;
+        transform: translate(-50%%, -50%%);
+        color: rgba(249,250,252,0.6); font-family: sans-serif;
+        font-size: 14px;
+      }
+      #controls-hint {
+        position: absolute; bottom: 12px; left: 50%%;
+        transform: translateX(-50%%);
+        color: rgba(249,250,252,0.45); font-family: sans-serif;
+        font-size: 12px; pointer-events: none; user-select: none;
+      }
+      #error-msg {
+        position: absolute; top: 50%%; left: 50%%;
+        transform: translate(-50%%, -50%%);
+        color: #FB7185; font-family: sans-serif;
+        font-size: 14px; display: none; text-align: center;
+      }
+    </style>
+    </head>
+    <body>
+    <div id="loading">Loading 3D model...</div>
+    <div id="error-msg"></div>
+    <div id="controls-hint">Drag to rotate &middot; Scroll to zoom &middot; Right-drag to pan</div>
+    <script>
+      var _scripts = [
+        "https://unpkg.com/three@0.99.0/build/three.min.js",
+        "https://unpkg.com/three@0.99.0/examples/js/libs/inflate.min.js",
+        "https://unpkg.com/three@0.99.0/examples/js/controls/OrbitControls.js",
+        "https://unpkg.com/three@0.99.0/examples/js/loaders/FBXLoader.js"
+      ];
+      var _loaded = 0;
+      function _loadNext() {
+        if (_loaded >= _scripts.length) { _init(); return; }
+        var s = document.createElement('script');
+        s.src = _scripts[_loaded];
+        s.onload = function() { _loaded++; _loadNext(); };
+        s.onerror = function() {
+          document.getElementById('loading').style.display = 'none';
+          var el = document.getElementById('error-msg');
+          el.style.display = 'block';
+          el.textContent = 'Failed to load: ' + _scripts[_loaded];
+        };
+        document.head.appendChild(s);
+      }
+      _loadNext();
+
+      function _init() {
+        try {
+          var w = document.body.clientWidth;
+          var h = document.body.clientHeight || 580;
+
+          var scene = new THREE.Scene();
+          scene.background = new THREE.Color(0x000000);
+
+          var camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 10000);
+          camera.position.set(0, 150, 300);
+
+          var renderer = new THREE.WebGLRenderer({ antialias: true });
+          renderer.setSize(w, h);
+          renderer.setPixelRatio(window.devicePixelRatio);
+          renderer.gammaOutput = true;
+          renderer.gammaFactor = 2.2;
+          document.body.appendChild(renderer.domElement);
+
+          // Lighting — bright even illumination for textured models
+          scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+          scene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 1.0));
+
+          var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+          dirLight.position.set(200, 400, 200);
+          scene.add(dirLight);
+
+          // Grid
+          scene.add(new THREE.GridHelper(600, 40, 0x2741E7, 0x111118));
+
+          // Controls
+          var controls = new THREE.OrbitControls(camera, renderer.domElement);
+          controls.enableDamping = true;
+          controls.dampingFactor = 0.05;
+          controls.rotateSpeed = 0.4;
+          controls.zoomSpeed = 0.5;
+          controls.panSpeed = 0.4;
+          controls.minDistance = 50;
+          controls.maxDistance = 2000;
+          controls.target.set(0, 50, 0);
+          controls.update();
+
+          // Load FBX from base64
+          var fbxB64 = "%%FBX_B64%%";
+          var raw = atob(fbxB64);
+          var bytes = new Uint8Array(raw.length);
+          for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+          var blob = new Blob([bytes.buffer]);
+          var blobUrl = URL.createObjectURL(blob);
+
+          var loader = new THREE.FBXLoader();
+          loader.load(blobUrl, function(object) {
+            // Replace all materials with MeshBasicMaterial (no lighting needed)
+            // Preserve textures, vertex colors, or use fallback grey
+            object.traverse(function(child) {
+              if (child instanceof THREE.Mesh) {
+                if (child.geometry) child.geometry.computeVertexNormals();
+                var geo = child.geometry;
+                var hasVC = geo && geo.attributes && geo.attributes.color;
+                var mats = Array.isArray(child.material) ? child.material : [child.material];
+                var newMats = mats.map(function(m) {
+                  var opts = { side: THREE.DoubleSide };
+                  if (m.map) {
+                    opts.map = m.map;
+                    opts.color = new THREE.Color(0xffffff);
+                  } else if (hasVC) {
+                    opts.vertexColors = THREE.VertexColors;
+                    opts.color = new THREE.Color(0xffffff);
+                  } else {
+                    opts.color = (m.color && (m.color.r + m.color.g + m.color.b) > 0.05)
+                      ? m.color : new THREE.Color(0xaaaaaa);
+                  }
+                  return new THREE.MeshBasicMaterial(opts);
+                });
+                child.material = newMats.length === 1 ? newMats[0] : newMats;
+              }
+            });
+
+            // Normalize model to ~200 units regardless of original scale
+            var box = new THREE.Box3().setFromObject(object);
+            var size = box.getSize(new THREE.Vector3());
+            var maxDim = Math.max(size.x, size.y, size.z);
+            if (maxDim > 0) {
+              var scale = 200 / maxDim;
+              object.scale.multiplyScalar(scale);
+            }
+
+            // Recompute after scaling
+            box.setFromObject(object);
+            var center = box.getCenter(new THREE.Vector3());
+            size = box.getSize(new THREE.Vector3());
+            object.position.sub(center);
+            object.position.y += size.y / 2;
+
+            scene.add(object);
+
+            camera.position.set(250, 180, 250);
+            controls.target.set(0, size.y / 2, 0);
+            controls.update();
+
+            document.getElementById('loading').style.display = 'none';
+            URL.revokeObjectURL(blobUrl);
+          }, undefined, function(err) {
+            document.getElementById('loading').style.display = 'none';
+            var el = document.getElementById('error-msg');
+            el.style.display = 'block';
+            el.textContent = 'Failed to load model: ' + (err.message || err);
+          });
+
+          window.addEventListener('resize', function() {
+            var w2 = document.body.clientWidth;
+            var h2 = document.body.clientHeight || 580;
+            camera.aspect = w2 / h2;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w2, h2);
+          });
+
+          function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+          }
+          animate();
+        } catch(e) {
+          document.getElementById('loading').style.display = 'none';
+          var el = document.getElementById('error-msg');
+          el.style.display = 'block';
+          el.textContent = 'Error: ' + e.message;
+        }
+      }
+    </script>
+    </body>
+    </html>
+    """
+
+    import streamlit.components.v1 as components
+    components.html(threejs_html.replace("%%FBX_B64%%", fbx_b64), height=600)
+else:
+    st.info("No FBX models found in the models/ directory.")
+
