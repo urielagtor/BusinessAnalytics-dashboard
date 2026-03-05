@@ -1018,67 +1018,6 @@ elif page == "Recommendations & Risks":
 else:
     st.info("Select at least one metric in the sidebar to display the line chart.")
 
-st.subheader("Customer Movement")
-st.altair_chart(
-    altair_bar_grouped(
-        fdf, "Month",
-        ["New_Customers", "Churned_Customers", "Net_Customers"],
-        "New vs Churned vs Net Customers",
-        "Customers"
-    ),
-    use_container_width=True
-)
-
-# Table
-if show_table:
-    st.subheader("Filtered Data Table")
-    st.dataframe(fdf, use_container_width=True, hide_index=True)
-
-# Predictive modeling
-st.divider()
-st.header("Predictive Modeling (Forecast)")
-
-target = st.selectbox(
-    "Select a metric to forecast",
-    options=[
-        "Total_Revenue_USD",
-        "Subscription_Revenue_USD",
-        "API_Revenue_USD",
-        "Units",
-        "New_Customers",
-        "Churned_Customers",
-        "Net_Customers",
-        "Gross_Profit_USD",
-        "Gross_Margin_%",
-    ],
-    index=0,
-)
-
-horizon = st.slider("Forecast horizon (months)", 3, 24, 6)
-alpha = st.slider("Model regularization (alpha)", 0.1, 50.0, 1.0)
-test_months = st.slider("Backtest window (months)", 0, 24, 12)
-
-forecast_df, metrics = fit_forecast(df, target_col=target, horizon=horizon, alpha=alpha, test_months=test_months)
-
-m1, m2, m3 = st.columns(3)
-m1.metric("Backtest months", f"{metrics.get('Backtest_Months', 0)}")
-m2.metric("Backtest MAE", "—" if "MAE" not in metrics else f"{metrics['MAE']:,.0f}")
-mape = metrics.get("MAPE")
-m3.metric("Backtest MAPE", "—" if mape is None else f"{mape:,.2f}%")
-
-st.subheader("Actual vs Fitted vs Forecast")
-
-st.altair_chart(
-    altair_multiline(
-        forecast_df.drop(columns=[], errors="ignore"),
-        "Month",
-        ["Actual", "Fitted", "Forecast"],
-        f"{target}: Actual / Fitted / Forecast",
-        ""
-    ),
-    use_container_width=True
-)
-
 # -----------------------------
 # 3D Data Center Viewer
 # -----------------------------
