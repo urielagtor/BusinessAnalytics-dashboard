@@ -653,7 +653,7 @@ def render_scenario_planner():
                 title={"text": "Projected Debt-to-Income"},
                 gauge={
                     "axis": {"range": [0, 3.0]},
-                    "threshold": {"line": {"color": CW_WARN, "width": 4}, "value": ratio_threshold},
+                    "threshold": {"line": {"color": CW_AMBER, "width": 4}, "value": ratio_threshold},
                     "steps": [
                         {"range": [0, 1.0], "color": "rgba(47, 91, 234, 0.25)"},
                         {"range": [1.0, ratio_threshold], "color": "rgba(255, 176, 32, 0.15)"},
