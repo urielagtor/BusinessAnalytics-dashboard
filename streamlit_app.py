@@ -28,7 +28,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.linear_model import Ridge
-from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
+from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error
 
 st.set_page_config(page_title="CoreWeave | Revenue Dashboard", page_icon="CoreWeave Logo White.svg", layout="wide")
 
@@ -42,6 +42,7 @@ CW_EMERALD = "#34D399"
 CW_AMBER = "#FBBF24"
 CW_ROSE = "#FB7185"
 CW_SKY = "#38BDF8"
+CW_WARN = "#FBBF24"
 
 CHART_PALETTE = [CW_BLUE, CW_CYAN, CW_VIOLET, CW_EMERALD, CW_AMBER, CW_SKY, CW_ROSE]
 PALETTE_SCALE = alt.Scale(range=CHART_PALETTE)
@@ -134,6 +135,8 @@ FEATURE_COLS = [
     "Total_Operating_Expenses_USD",
     "Operating_Income_USD",
 ]
+
+backtest_min_train = 6
 
 
 # ----------------------------
@@ -1015,273 +1018,6 @@ elif page == "3D Viewer":
     render_3d_viewer()
 elif page == "Recommendations & Risks":
     render_recommendations()
-else:
-    st.info("Select at least one metric in the sidebar to display the line chart.")
-
-st.subheader("Customer Movement")
-st.altair_chart(
-    altair_bar_grouped(
-        fdf, "Month",
-        ["New_Customers", "Churned_Customers", "Net_Customers"],
-        "New vs Churned vs Net Customers",
-        "Customers"
-    ),
-    use_container_width=True
-)
-
-# Table
-if show_table:
-    st.subheader("Filtered Data Table")
-    st.dataframe(fdf, use_container_width=True, hide_index=True)
-
-# Predictive modeling
-st.divider()
-st.header("Predictive Modeling (Forecast)")
-
-target = st.selectbox(
-    "Select a metric to forecast",
-    options=[
-        "Total_Revenue_USD",
-        "Subscription_Revenue_USD",
-        "API_Revenue_USD",
-        "Units",
-        "New_Customers",
-        "Churned_Customers",
-        "Net_Customers",
-        "Gross_Profit_USD",
-        "Gross_Margin_%",
-    ],
-    index=0,
-)
-
-horizon = st.slider("Forecast horizon (months)", 3, 24, 6)
-alpha = st.slider("Model regularization (alpha)", 0.1, 50.0, 1.0)
-test_months = st.slider("Backtest window (months)", 0, 24, 12)
-
-forecast_df, metrics = fit_forecast(df, target_col=target, horizon=horizon, alpha=alpha, test_months=test_months)
-
-m1, m2, m3 = st.columns(3)
-m1.metric("Backtest months", f"{metrics.get('Backtest_Months', 0)}")
-m2.metric("Backtest MAE", "—" if "MAE" not in metrics else f"{metrics['MAE']:,.0f}")
-mape = metrics.get("MAPE")
-m3.metric("Backtest MAPE", "—" if mape is None else f"{mape:,.2f}%")
-
-st.subheader("Actual vs Fitted vs Forecast")
-
-st.altair_chart(
-    altair_multiline(
-        forecast_df.drop(columns=[], errors="ignore"),
-        "Month",
-        ["Actual", "Fitted", "Forecast"],
-        f"{target}: Actual / Fitted / Forecast",
-        ""
-    ),
-    use_container_width=True
-)
-
-# -----------------------------
-# 3D Data Center Viewer
-# -----------------------------
-st.divider()
-st.header("Data Center 3D Viewer")
-
-_models_dir = Path(__file__).parent / "models"
-_fbx_files = {p.stem: p for p in sorted(_models_dir.glob("*.fbx"))} if _models_dir.exists() else {}
-
-if _fbx_files:
-    selected_model = st.selectbox("Select Data Center", options=list(_fbx_files.keys()))
-    fbx_b64 = base64.b64encode(_fbx_files[selected_model].read_bytes()).decode()
-
-    threejs_html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <style>
-      body { margin: 0; overflow: hidden; background: #000; }
-      canvas { display: block; width: 100%%; height: 100%%; }
-      #loading {
-        position: absolute; top: 50%%; left: 50%%;
-        transform: translate(-50%%, -50%%);
-        color: rgba(249,250,252,0.6); font-family: sans-serif;
-        font-size: 14px;
-      }
-      #controls-hint {
-        position: absolute; bottom: 12px; left: 50%%;
-        transform: translateX(-50%%);
-        color: rgba(249,250,252,0.45); font-family: sans-serif;
-        font-size: 12px; pointer-events: none; user-select: none;
-      }
-      #error-msg {
-        position: absolute; top: 50%%; left: 50%%;
-        transform: translate(-50%%, -50%%);
-        color: #FB7185; font-family: sans-serif;
-        font-size: 14px; display: none; text-align: center;
-      }
-    </style>
-    </head>
-    <body>
-    <div id="loading">Loading 3D model...</div>
-    <div id="error-msg"></div>
-    <div id="controls-hint">Drag to rotate &middot; Scroll to zoom &middot; Right-drag to pan</div>
-    <script>
-      var _scripts = [
-        "https://unpkg.com/three@0.99.0/build/three.min.js",
-        "https://unpkg.com/three@0.99.0/examples/js/libs/inflate.min.js",
-        "https://unpkg.com/three@0.99.0/examples/js/controls/OrbitControls.js",
-        "https://unpkg.com/three@0.99.0/examples/js/loaders/FBXLoader.js"
-      ];
-      var _loaded = 0;
-      function _loadNext() {
-        if (_loaded >= _scripts.length) { _init(); return; }
-        var s = document.createElement('script');
-        s.src = _scripts[_loaded];
-        s.onload = function() { _loaded++; _loadNext(); };
-        s.onerror = function() {
-          document.getElementById('loading').style.display = 'none';
-          var el = document.getElementById('error-msg');
-          el.style.display = 'block';
-          el.textContent = 'Failed to load: ' + _scripts[_loaded];
-        };
-        document.head.appendChild(s);
-      }
-      _loadNext();
-
-      function _init() {
-        try {
-          var w = document.body.clientWidth;
-          var h = document.body.clientHeight || 580;
-
-          var scene = new THREE.Scene();
-          scene.background = new THREE.Color(0x000000);
-
-          var camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 10000);
-          camera.position.set(0, 150, 300);
-
-          var renderer = new THREE.WebGLRenderer({ antialias: true });
-          renderer.setSize(w, h);
-          renderer.setPixelRatio(window.devicePixelRatio);
-          renderer.gammaOutput = true;
-          renderer.gammaFactor = 2.2;
-          document.body.appendChild(renderer.domElement);
-
-          // Lighting — bright even illumination for textured models
-          scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-          scene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 1.0));
-
-          var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-          dirLight.position.set(200, 400, 200);
-          scene.add(dirLight);
-
-          // Grid
-          scene.add(new THREE.GridHelper(600, 40, 0x2741E7, 0x111118));
-
-          // Controls
-          var controls = new THREE.OrbitControls(camera, renderer.domElement);
-          controls.enableDamping = true;
-          controls.dampingFactor = 0.05;
-          controls.rotateSpeed = 0.4;
-          controls.zoomSpeed = 0.5;
-          controls.panSpeed = 0.4;
-          controls.minDistance = 50;
-          controls.maxDistance = 2000;
-          controls.target.set(0, 50, 0);
-          controls.update();
-
-          // Load FBX from base64
-          var fbxB64 = "%%FBX_B64%%";
-          var raw = atob(fbxB64);
-          var bytes = new Uint8Array(raw.length);
-          for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-          var blob = new Blob([bytes.buffer]);
-          var blobUrl = URL.createObjectURL(blob);
-
-          var loader = new THREE.FBXLoader();
-          loader.load(blobUrl, function(object) {
-            // Replace all materials with MeshBasicMaterial (no lighting needed)
-            // Preserve textures, vertex colors, or use fallback grey
-            object.traverse(function(child) {
-              if (child instanceof THREE.Mesh) {
-                if (child.geometry) child.geometry.computeVertexNormals();
-                var geo = child.geometry;
-                var hasVC = geo && geo.attributes && geo.attributes.color;
-                var mats = Array.isArray(child.material) ? child.material : [child.material];
-                var newMats = mats.map(function(m) {
-                  var opts = { side: THREE.DoubleSide };
-                  if (m.map) {
-                    opts.map = m.map;
-                    opts.color = new THREE.Color(0xffffff);
-                  } else if (hasVC) {
-                    opts.vertexColors = THREE.VertexColors;
-                    opts.color = new THREE.Color(0xffffff);
-                  } else {
-                    opts.color = (m.color && (m.color.r + m.color.g + m.color.b) > 0.05)
-                      ? m.color : new THREE.Color(0xaaaaaa);
-                  }
-                  return new THREE.MeshBasicMaterial(opts);
-                });
-                child.material = newMats.length === 1 ? newMats[0] : newMats;
-              }
-            });
-
-            // Normalize model to ~200 units regardless of original scale
-            var box = new THREE.Box3().setFromObject(object);
-            var size = box.getSize(new THREE.Vector3());
-            var maxDim = Math.max(size.x, size.y, size.z);
-            if (maxDim > 0) {
-              var scale = 200 / maxDim;
-              object.scale.multiplyScalar(scale);
-            }
-
-            // Recompute after scaling
-            box.setFromObject(object);
-            var center = box.getCenter(new THREE.Vector3());
-            size = box.getSize(new THREE.Vector3());
-            object.position.sub(center);
-            object.position.y += size.y / 2;
-
-            scene.add(object);
-
-            camera.position.set(250, 180, 250);
-            controls.target.set(0, size.y / 2, 0);
-            controls.update();
-
-            document.getElementById('loading').style.display = 'none';
-            URL.revokeObjectURL(blobUrl);
-          }, undefined, function(err) {
-            document.getElementById('loading').style.display = 'none';
-            var el = document.getElementById('error-msg');
-            el.style.display = 'block';
-            el.textContent = 'Failed to load model: ' + (err.message || err);
-          });
-
-          window.addEventListener('resize', function() {
-            var w2 = document.body.clientWidth;
-            var h2 = document.body.clientHeight || 580;
-            camera.aspect = w2 / h2;
-            camera.updateProjectionMatrix();
-            renderer.setSize(w2, h2);
-          });
-
-          function animate() {
-            requestAnimationFrame(animate);
-            controls.update();
-            renderer.render(scene, camera);
-          }
-          animate();
-        } catch(e) {
-          document.getElementById('loading').style.display = 'none';
-          var el = document.getElementById('error-msg');
-          el.style.display = 'block';
-          el.textContent = 'Error: ' + e.message;
-        }
-      }
-    </script>
-    </body>
-    </html>
-    """
-
-    import streamlit.components.v1 as components
-    components.html(threejs_html.replace("%%FBX_B64%%", fbx_b64), height=600)
-else:
-    st.info("No FBX models found in the models/ directory.")
+elif page == "Dictionary":
+    render_dictionary()
 
