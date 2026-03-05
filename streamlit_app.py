@@ -368,6 +368,7 @@ base_rev = float(fc_rev["next_pred"]) if fc_rev else np.nan
 base_liab = float(fc_liab["next_pred"]) if fc_liab else np.nan
 base_ratio = safe_div(base_liab, base_rev) if (fc_rev and fc_liab) else np.nan
 next_label = fc_liab["next_date"].strftime("%b %d, %Y") if fc_liab else "Next quarter"
+ratio_threshold = 1.5
 
 # ----------------------------
 # Sidebar Navigation + Controls
@@ -436,13 +437,7 @@ def altair_bar_grouped(df_in: pd.DataFrame, x_col: str, cols: list[str], title: 
         .properties(title=title, height=320)
         .interactive()
     )
-
-    st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
-    status, status_sub = status_label(current_ratio, ratio_threshold)
-    st.markdown("### Current status")
-    st.write(f"**DTI:** {current_ratio:,.2f}" if not np.isnan(current_ratio) else "**DTI:** —")
-    st.write(f"**Status:** {status}")
-    st.caption(status_sub)
+    return chart
 
 # Sidebar logo
 _logo_path = Path(__file__).parent / "CoreWeave Logo White.svg"
