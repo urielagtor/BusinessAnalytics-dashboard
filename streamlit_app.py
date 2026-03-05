@@ -374,6 +374,13 @@ backtest_min_train = 6
 # Sidebar Navigation + Controls
 # ----------------------------
 with st.sidebar:
+    _logo_path = Path(__file__).parent / "CoreWeave Logo White.svg"
+    if _logo_path.exists():
+        _logo_b64 = base64.b64encode(_logo_path.read_bytes()).decode()
+        st.markdown(
+            f'<img src="data:image/svg+xml;base64,{_logo_b64}" style="width:160px;margin-bottom:1.5rem;">',
+            unsafe_allow_html=True,
+        )
     st.markdown("### Navigation")
     page = st.radio(
         "Go to",
@@ -433,15 +440,6 @@ def altair_bar_grouped(df_in: pd.DataFrame, x_col: str, cols: list[str], title: 
         .interactive()
     )
     return chart
-
-# Sidebar logo
-_logo_path = Path(__file__).parent / "CoreWeave Logo White.svg"
-if _logo_path.exists():
-    _logo_b64 = base64.b64encode(_logo_path.read_bytes()).decode()
-    st.sidebar.markdown(
-        f'<img src="data:image/svg+xml;base64,{_logo_b64}" style="width:160px;margin-bottom:1.5rem;">',
-        unsafe_allow_html=True,
-    )
 
 st.title("CoreWeave Revenue & Customer Trends Dashboard")
 
