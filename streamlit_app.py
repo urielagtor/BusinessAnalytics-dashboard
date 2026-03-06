@@ -60,14 +60,16 @@ _dark.layout.xaxis.showgrid = False
 _dark.layout.xaxis.showline = False
 _dark.layout.xaxis.tickcolor = "white"
 _dark.layout.xaxis.tickfont = dict(color="white")
-_dark.layout.yaxis.showline = True
-_dark.layout.yaxis.linewidth = 2
-_dark.layout.yaxis.linecolor = "white"
+_dark.layout.yaxis.showline = False
 _dark.layout.yaxis.showgrid = True
 _dark.layout.yaxis.gridcolor = "white"
 _dark.layout.yaxis.gridwidth = 1
 _dark.layout.yaxis.tickcolor = "white"
 _dark.layout.yaxis.tickfont = dict(color="white")
+_AXIS_STYLE = dict(
+    xaxis=dict(showgrid=False, showline=False, tickcolor="white", tickfont=dict(color="white")),
+    yaxis=dict(showline=False, showgrid=True, gridcolor="white", gridwidth=1, tickcolor="white", tickfont=dict(color="white")),
+)
 
 st.markdown(
     f"""
@@ -414,10 +416,10 @@ def render_overview():
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=df_q["Date"], y=df_q["Revenue_USD"], mode="lines+markers", name="Revenue"))
         fig.add_trace(go.Scatter(x=df_q["Date"], y=df_q["Total_Liabilities_USD"], mode="lines+markers", name="Total Liabilities"))
-        fig.update_layout(title="Revenue vs Total Liabilities (Quarterly)", template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=420)
+        fig.update_layout(title="Revenue vs Total Liabilities (Quarterly)", template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=420, **_AXIS_STYLE)
         st.plotly_chart(fig, use_container_width=True)
         fig2 = px.line(df_q, x="Date", y="Debt_to_Income", title="Debt-to-Income Trend (Liabilities ÷ Revenue)")
-        fig2.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=360)
+        fig2.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=360, **_AXIS_STYLE)
         fig2.add_hline(y=ratio_threshold, line_dash="dash", annotation_text="Alert threshold")
         st.plotly_chart(fig2, use_container_width=True)
     with right:
@@ -485,14 +487,14 @@ def render_forecast():
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=s["Date"], y=s["Actual"], mode="lines+markers", name="Actual"))
             fig.add_trace(go.Scatter(x=s["Date"], y=s["Predicted"], mode="lines+markers", name="Predicted"))
-            fig.update_layout(title="Backtest: Revenue (Actual vs Predicted)", template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=380)
+            fig.update_layout(title="Backtest: Revenue (Actual vs Predicted)", template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=380, **_AXIS_STYLE)
             st.plotly_chart(fig, use_container_width=True)
         if bt_liab:
             s = bt_liab["series"]
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=s["Date"], y=s["Actual"], mode="lines+markers", name="Actual"))
             fig.add_trace(go.Scatter(x=s["Date"], y=s["Predicted"], mode="lines+markers", name="Predicted"))
-            fig.update_layout(title="Backtest: Total Liabilities (Actual vs Predicted)", template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=380)
+            fig.update_layout(title="Backtest: Total Liabilities (Actual vs Predicted)", template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=380, **_AXIS_STYLE)
             st.plotly_chart(fig, use_container_width=True)
 # SCENARIO PLANNER PAGE: "If X, then Y" — adjust revenue growth, OpEx, and
 # liability levers to see projected DTI with a gauge chart and bar comparison
@@ -567,12 +569,12 @@ def render_scenario_planner():
                     ],
                 },
             ))
-            gauge.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=320)
+            gauge.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=320, **_AXIS_STYLE)
             st.plotly_chart(gauge, use_container_width=True)
         with bcol:
             compare = pd.DataFrame({"Type": ["Baseline", "Scenario"], "Debt-to-Income": [base_ratio, proj_ratio]})
             fig = px.bar(compare, x="Type", y="Debt-to-Income", title="Baseline vs Scenario DTI")
-            fig.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=320)
+            fig.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=320, **_AXIS_STYLE)
             fig.add_hline(y=ratio_threshold, line_dash="dash", annotation_text="Threshold")
             st.plotly_chart(fig, use_container_width=True)
 # 3D VIEWER PAGE: loads FBX model files from ./models and renders them
@@ -799,7 +801,7 @@ def render_recommendations():
                 hover_data=["Period", "Date"],
                 title="Revenue vs Liabilities (colored by DTI)",
             )
-            fig.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=520)
+            fig.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=520, **_AXIS_STYLE)
             st.plotly_chart(fig, use_container_width=True)
         st.markdown("### Uncertainty & limitations")
         st.write("• Data is simulated SEC-style; real-world results can differ.")
