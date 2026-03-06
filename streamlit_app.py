@@ -656,36 +656,42 @@ def render_3d_viewer():
     _fbx_files = {p.stem: p for p in sorted(MODELS_DIR.glob("*.fbx"))} if MODELS_DIR.exists() else {}
     if _fbx_files:
         selected_model = st.selectbox("Select Data Center", options=list(_fbx_files.keys()))
-        # Streamlit-side loading overlay shown instantly on rerun (dropdown change)
-        _loader_id = "viewer-loader-overlay"
-        st.markdown(f"""
-        <div id="{_loader_id}" style="
-            background: #000; display: flex; flex-direction: column;
-            align-items: center; justify-content: center;
-            height: 640px; border-radius: 0.5rem; position: relative;
-        ">
-            <div style="display:flex;justify-content:center;gap:6px;margin-bottom:10px;">
-                <span class="cw-dot cw-dot-1"></span>
-                <span class="cw-dot cw-dot-2"></span>
-                <span class="cw-dot cw-dot-3"></span>
+        # Two-phase loading: on model change, show overlay immediately (no file I/O),
+        # then rerun to actually load the model with the iframe's built-in loading indicator.
+        if "viewer_model" not in st.session_state:
+            st.session_state.viewer_model = None
+        _model_changed = selected_model != st.session_state.viewer_model
+        if _model_changed:
+            st.session_state.viewer_model = selected_model
+            st.markdown("""
+            <div style="
+                background: #000; display: flex; flex-direction: column;
+                align-items: center; justify-content: center;
+                height: 640px; border-radius: 0.5rem;
+            ">
+                <div style="display:flex;justify-content:center;gap:6px;margin-bottom:10px;">
+                    <span class="cw-dot cw-dot-1"></span>
+                    <span class="cw-dot cw-dot-2"></span>
+                    <span class="cw-dot cw-dot-3"></span>
+                </div>
+                <span style="color:rgba(249,250,252,0.6);font-family:sans-serif;font-size:14px;">Loading 3D model...</span>
             </div>
-            <span style="color:rgba(249,250,252,0.6);font-family:sans-serif;font-size:14px;">Loading 3D model...</span>
-        </div>
-        <style>
-            .cw-dot {{
-                width:10px;height:10px;border-radius:50%;
-                background:rgba(39,65,231,0.85);
-                animation:cwDotBounce 1.4s ease-in-out infinite both;
-            }}
-            .cw-dot-1 {{ animation-delay:-0.32s; }}
-            .cw-dot-2 {{ animation-delay:-0.16s; }}
-            .cw-dot-3 {{ animation-delay:0s; }}
-            @keyframes cwDotBounce {{
-                0%,80%,100% {{ transform:scale(0.4);opacity:0.4; }}
-                40% {{ transform:scale(1);opacity:1; }}
-            }}
-        </style>
-        """, unsafe_allow_html=True)
+            <style>
+                .cw-dot {
+                    width:10px;height:10px;border-radius:50%;
+                    background:rgba(39,65,231,0.85);
+                    animation:cwDotBounce 1.4s ease-in-out infinite both;
+                }
+                .cw-dot-1 { animation-delay:-0.32s; }
+                .cw-dot-2 { animation-delay:-0.16s; }
+                .cw-dot-3 { animation-delay:0s; }
+                @keyframes cwDotBounce {
+                    0%,80%,100% { transform:scale(0.4);opacity:0.4; }
+                    40% { transform:scale(1);opacity:1; }
+                }
+            </style>
+            """, unsafe_allow_html=True)
+            st.rerun()
         fbx_b64 = base64.b64encode(_fbx_files[selected_model].read_bytes()).decode()
         threejs_html = """
         <!DOCTYPE html>
@@ -741,14 +747,6 @@ def render_3d_viewer():
         <div id="error-msg"></div>
         <div id="controls-hint">Drag to rotate &middot; Scroll to zoom &middot; Right-drag to pan</div>
         <script>
-          function _hideParentOverlay() {
-            try {
-              var w = window;
-              while (w !== w.parent) { w = w.parent; }
-              var el = w.document.getElementById('viewer-loader-overlay');
-              if (el) el.style.display = 'none';
-            } catch(e) {}
-          }
           var _scripts = [
             "https://unpkg.com/three@0.99.0/build/three.min.js",
             "https://unpkg.com/three@0.99.0/examples/js/libs/inflate.min.js",
@@ -763,7 +761,6 @@ def render_3d_viewer():
             s.onload = function() { _loaded++; _loadNext(); };
             s.onerror = function() {
               document.getElementById('loading').style.display = 'none';
-              _hideParentOverlay();
               var el = document.getElementById('error-msg');
               el.style.display = 'block';
               el.textContent = 'Failed to load: ' + _scripts[_loaded];
@@ -849,11 +846,9 @@ def render_3d_viewer():
                 controls.target.set(0, size.y / 2, 0);
                 controls.update();
                 document.getElementById('loading').style.display = 'none';
-                _hideParentOverlay();
                 URL.revokeObjectURL(blobUrl);
               }, undefined, function(err) {
                 document.getElementById('loading').style.display = 'none';
-                _hideParentOverlay();
                 var el = document.getElementById('error-msg');
                 el.style.display = 'block';
                 el.textContent = 'Failed to load model: ' + (err.message || err);
@@ -873,7 +868,6 @@ def render_3d_viewer():
               animate();
             } catch(e) {
               document.getElementById('loading').style.display = 'none';
-              _hideParentOverlay();
               var el = document.getElementById('error-msg');
               el.style.display = 'block';
               el.textContent = 'Error: ' + e.message;
