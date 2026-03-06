@@ -31,7 +31,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 # ----------------------------
 st.set_page_config(
     page_title="CoreWeave | Debt-to-Income Strategy Dashboard",
-    page_icon=None,
+    page_icon="CoreWeave Logo White.svg",
     layout="wide",
 )
 # ----------------------------
