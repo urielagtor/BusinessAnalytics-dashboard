@@ -351,7 +351,7 @@ with st.sidebar:
     st.markdown("### Controls")
     ratio_threshold = st.slider(
         "DTI alert threshold",
-        0.5, 3.0, 1.2, 0.1,
+        0.5, 30.0, 1.2, 0.1,
         help="If DTI exceeds this threshold, the dashboard flags it as requiring mitigation.",
     )
     backtest_min_train = st.slider(
