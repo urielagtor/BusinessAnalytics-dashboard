@@ -141,7 +141,7 @@ st.markdown(
         gap: 0.5rem !important;
       }}
       [data-testid="stSidebar"] .stButton > button:hover {{
-        background: rgba(151, 166, 195, 0.1) !important;
+        background: rgba(255, 255, 255, 0.04) !important;
         color: {CW_TEXT} !important;
       }}
       [data-testid="stSidebar"] .stButton > button:focus {{
@@ -424,7 +424,7 @@ with st.sidebar:
     st.markdown(
         f"""<style>
         [data-testid="stSidebar"] .stButton:nth-of-type({_active_idx + 1}) > button {{
-            background: rgba(151, 166, 195, 0.15) !important;
+            background: rgba(255, 255, 255, 0.08) !important;
             color: {CW_TEXT} !important;
             font-weight: 600 !important;
         }}
