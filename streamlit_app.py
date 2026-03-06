@@ -72,9 +72,9 @@ st.markdown(
         letter-spacing: 0.2px;
       }}
       .cw-card{{
-        background: {CW_PANEL};
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 14px;
+        background: transparent;
+        border: none;
+        border-radius: 0;
         padding: 14px 16px;
       }}
       .cw-muted {{ color: {CW_MUTED}; }}
