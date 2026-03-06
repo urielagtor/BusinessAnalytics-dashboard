@@ -63,7 +63,9 @@ _dark.layout.xaxis.tickfont = dict(color="white")
 _dark.layout.yaxis.showline = True
 _dark.layout.yaxis.linewidth = 2
 _dark.layout.yaxis.linecolor = "white"
+_dark.layout.yaxis.showgrid = True
 _dark.layout.yaxis.gridcolor = "white"
+_dark.layout.yaxis.gridwidth = 1
 _dark.layout.yaxis.tickcolor = "white"
 _dark.layout.yaxis.tickfont = dict(color="white")
 
