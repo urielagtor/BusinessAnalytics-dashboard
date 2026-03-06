@@ -665,12 +665,13 @@ def render_3d_viewer():
           html, body { margin: 0; overflow: hidden; background: #000; width: 100%%; height: 100%%; }
           canvas { display: block; width: 100%%; height: 100%%; }
           #loading {
-            position: fixed; top: 0; left: 0; width: 100%%; height: 100%%;
+            position: absolute; top: 0; left: 0;
+            width: 100vw; height: 100vh;
             display: flex; flex-direction: column;
             align-items: center; justify-content: center;
             color: rgba(249,250,252,0.6); font-family: sans-serif;
             font-size: 14px; text-align: center;
-            z-index: 10;
+            z-index: 10; pointer-events: none;
           }
           .dot-loader {
             display: flex; justify-content: center; gap: 6px;
