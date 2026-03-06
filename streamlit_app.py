@@ -155,6 +155,12 @@ st.markdown(
         font-size: 1.25rem !important;
         color: inherit !important;
       }}
+      /* Active nav button (primary type) */
+      [data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"] {{
+        background: rgba(255, 255, 255, 0.08) !important;
+        color: {CW_TEXT} !important;
+        font-weight: 600 !important;
+      }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -412,25 +418,16 @@ with st.sidebar:
         st.markdown("<span class='cw-badge'>CoreWeave</span>", unsafe_allow_html=True)
     st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
     for _label, _icon in _NAV_ITEMS:
+        _is_active = st.session_state["page"] == _label
         if st.button(
             _label,
             key=f"nav_{_label}",
             icon=_icon,
             use_container_width=True,
+            type="primary" if _is_active else "secondary",
         ):
             st.session_state["page"] = _label
             st.rerun()
-    _active_idx = next(i for i, (l, _) in enumerate(_NAV_ITEMS) if l == st.session_state["page"])
-    st.markdown(
-        f"""<style>
-        [data-testid="stSidebar"] .stButton:nth-of-type({_active_idx + 1}) > button {{
-            background: rgba(255, 255, 255, 0.08) !important;
-            color: {CW_TEXT} !important;
-            font-weight: 600 !important;
-        }}
-        </style>""",
-        unsafe_allow_html=True,
-    )
     st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
     st.markdown("### Controls")
     ratio_threshold = st.slider(
