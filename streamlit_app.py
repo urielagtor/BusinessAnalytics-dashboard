@@ -354,12 +354,9 @@ next_label = fc_liab["next_date"].strftime("%b %d, %Y") if fc_liab else "Next qu
 # ----------------------------
 # Sidebar contains: logo, page navigation radio, DTI threshold slider,
 # backtest training size slider, and a live DTI status indicator
+if os.path.exists(LOGO_PATH):
+    st.logo(LOGO_PATH)
 with st.sidebar:
-    if os.path.exists(LOGO_PATH):
-        st.image(LOGO_PATH, use_container_width=True)
-    else:
-        st.markdown("<span class='cw-badge'>CoreWeave</span>", unsafe_allow_html=True)
-    st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
     st.markdown("### Controls")
     ratio_threshold = st.slider(
         "DTI alert threshold",
