@@ -668,7 +668,23 @@ def render_3d_viewer():
             position: absolute; top: 50%%; left: 50%%;
             transform: translate(-50%%, -50%%);
             color: rgba(249,250,252,0.6); font-family: sans-serif;
-            font-size: 14px;
+            font-size: 14px; text-align: center;
+          }
+          .dot-loader {
+            display: flex; justify-content: center; gap: 6px;
+            margin-bottom: 10px;
+          }
+          .dot-loader span {
+            width: 10px; height: 10px; border-radius: 50%%;
+            background: rgba(39,65,231,0.85);
+            animation: dotBounce 1.4s ease-in-out infinite both;
+          }
+          .dot-loader span:nth-child(1) { animation-delay: -0.32s; }
+          .dot-loader span:nth-child(2) { animation-delay: -0.16s; }
+          .dot-loader span:nth-child(3) { animation-delay: 0s; }
+          @keyframes dotBounce {
+            0%%, 80%%, 100%% { transform: scale(0.4); opacity: 0.4; }
+            40%% { transform: scale(1); opacity: 1; }
           }
           #controls-hint {
             position: absolute; bottom: 12px; left: 50%%;
@@ -685,7 +701,10 @@ def render_3d_viewer():
         </style>
         </head>
         <body>
-        <div id="loading">Loading 3D model...</div>
+        <div id="loading">
+          <div class="dot-loader"><span></span><span></span><span></span></div>
+          Loading 3D model...
+        </div>
         <div id="error-msg"></div>
         <div id="controls-hint">Drag to rotate &middot; Scroll to zoom &middot; Right-drag to pan</div>
         <script>
