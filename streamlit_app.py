@@ -56,16 +56,14 @@ CW_DANGER = "#FF4D4D"    # Danger/alert indicators (red)
 
 import plotly.io as pio
 _dark = pio.templates["plotly_dark"]
-_dark.layout.xaxis.showline = True
-_dark.layout.xaxis.linewidth = 2
-_dark.layout.xaxis.linecolor = "white"
-_dark.layout.xaxis.gridcolor = "rgba(255,255,255,0.15)"
+_dark.layout.xaxis.showgrid = False
+_dark.layout.xaxis.showline = False
 _dark.layout.xaxis.tickcolor = "white"
 _dark.layout.xaxis.tickfont = dict(color="white")
 _dark.layout.yaxis.showline = True
 _dark.layout.yaxis.linewidth = 2
 _dark.layout.yaxis.linecolor = "white"
-_dark.layout.yaxis.gridcolor = "rgba(255,255,255,0.15)"
+_dark.layout.yaxis.gridcolor = "white"
 _dark.layout.yaxis.tickcolor = "white"
 _dark.layout.yaxis.tickfont = dict(color="white")
 
