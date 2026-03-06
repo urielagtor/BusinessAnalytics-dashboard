@@ -148,9 +148,17 @@ st.markdown(
         box-shadow: none !important;
         outline: none !important;
       }}
-      [data-testid="stSidebar"] .stButton > button > div {{
-        gap: 0.5rem !important;
+      [data-testid="stSidebar"] .stButton > button,
+      [data-testid="stSidebar"] .stButton > button > div,
+      [data-testid="stSidebar"] .stButton > button > div > * {{
         justify-content: flex-start !important;
+        align-items: center !important;
+        display: flex !important;
+        gap: 0.5rem !important;
+      }}
+      [data-testid="stSidebar"] .stButton > button > div > p {{
+        text-align: left !important;
+        width: auto !important;
       }}
       [data-testid="stSidebar"] .stButton > button span[data-testid="stIconMaterial"] {{
         font-size: 1.25rem !important;
