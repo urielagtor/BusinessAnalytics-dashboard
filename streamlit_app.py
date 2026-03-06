@@ -700,31 +700,6 @@ def render_3d_viewer():
         <style>
           html, body { margin: 0; overflow: hidden; background: #000; width: 100%; height: 100%; }
           canvas { display: block; width: 100%; height: 100%; }
-          #loading {
-            position: absolute; top: 0; left: 0;
-            width: 100vw; height: 100vh;
-            display: flex; flex-direction: column;
-            align-items: center; justify-content: center;
-            color: rgba(249,250,252,0.6); font-family: sans-serif;
-            font-size: 14px; text-align: center;
-            z-index: 10; pointer-events: none;
-          }
-          .dot-loader {
-            display: flex; justify-content: center; gap: 6px;
-            margin-bottom: 10px;
-          }
-          .dot-loader span {
-            width: 10px; height: 10px; border-radius: 50%;
-            background: rgba(39,65,231,0.85);
-            animation: dotBounce 1.4s ease-in-out infinite both;
-          }
-          .dot-loader span:nth-child(1) { animation-delay: -0.32s; }
-          .dot-loader span:nth-child(2) { animation-delay: -0.16s; }
-          .dot-loader span:nth-child(3) { animation-delay: 0s; }
-          @keyframes dotBounce {
-            0%, 80%, 100% { transform: scale(0.4); opacity: 0.4; }
-            40% { transform: scale(1); opacity: 1; }
-          }
           #controls-hint {
             position: absolute; bottom: 12px; left: 50%;
             transform: translateX(-50%);
@@ -740,10 +715,6 @@ def render_3d_viewer():
         </style>
         </head>
         <body>
-        <div id="loading">
-          <div class="dot-loader"><span></span><span></span><span></span></div>
-          Loading 3D model...
-        </div>
         <div id="error-msg"></div>
         <div id="controls-hint">Drag to rotate &middot; Scroll to zoom &middot; Right-drag to pan</div>
         <script>
@@ -760,7 +731,7 @@ def render_3d_viewer():
             s.src = _scripts[_loaded];
             s.onload = function() { _loaded++; _loadNext(); };
             s.onerror = function() {
-              document.getElementById('loading').style.display = 'none';
+
               var el = document.getElementById('error-msg');
               el.style.display = 'block';
               el.textContent = 'Failed to load: ' + _scripts[_loaded];
@@ -845,10 +816,10 @@ def render_3d_viewer():
                 camera.position.set(250, 180, 250);
                 controls.target.set(0, size.y / 2, 0);
                 controls.update();
-                document.getElementById('loading').style.display = 'none';
+  
                 URL.revokeObjectURL(blobUrl);
               }, undefined, function(err) {
-                document.getElementById('loading').style.display = 'none';
+  
                 var el = document.getElementById('error-msg');
                 el.style.display = 'block';
                 el.textContent = 'Failed to load model: ' + (err.message || err);
@@ -867,7 +838,7 @@ def render_3d_viewer():
               }
               animate();
             } catch(e) {
-              document.getElementById('loading').style.display = 'none';
+
               var el = document.getElementById('error-msg');
               el.style.display = 'block';
               el.textContent = 'Error: ' + e.message;
