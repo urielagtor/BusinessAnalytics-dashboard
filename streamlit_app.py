@@ -360,10 +360,10 @@ def render_overview():
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=df_q["Date"], y=df_q["Revenue_USD"], mode="lines+markers", name="Revenue"))
         fig.add_trace(go.Scatter(x=df_q["Date"], y=df_q["Total_Liabilities_USD"], mode="lines+markers", name="Total Liabilities"))
-        fig.update_layout(title="Revenue vs Total Liabilities (Quarterly)", template="plotly_dark", height=420)
+        fig.update_layout(title="Revenue vs Total Liabilities (Quarterly)", template="plotly_dark", plot_bgcolor="#181B2E", paper_bgcolor="#181B2E", height=420)
         st.plotly_chart(fig, use_container_width=True)
         fig2 = px.line(df_q, x="Date", y="Debt_to_Income", title="Debt-to-Income Trend (Liabilities ÷ Revenue)")
-        fig2.update_layout(template="plotly_dark", height=360)
+        fig2.update_layout(template="plotly_dark", plot_bgcolor="#181B2E", paper_bgcolor="#181B2E", height=360)
         fig2.add_hline(y=ratio_threshold, line_dash="dash", annotation_text="Alert threshold")
         st.plotly_chart(fig2, use_container_width=True)
     with right:
@@ -430,14 +430,14 @@ def render_forecast():
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=s["Date"], y=s["Actual"], mode="lines+markers", name="Actual"))
             fig.add_trace(go.Scatter(x=s["Date"], y=s["Predicted"], mode="lines+markers", name="Predicted"))
-            fig.update_layout(title="Backtest: Revenue (Actual vs Predicted)", template="plotly_dark", height=380)
+            fig.update_layout(title="Backtest: Revenue (Actual vs Predicted)", template="plotly_dark", plot_bgcolor="#181B2E", paper_bgcolor="#181B2E", height=380)
             st.plotly_chart(fig, use_container_width=True)
         if bt_liab:
             s = bt_liab["series"]
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=s["Date"], y=s["Actual"], mode="lines+markers", name="Actual"))
             fig.add_trace(go.Scatter(x=s["Date"], y=s["Predicted"], mode="lines+markers", name="Predicted"))
-            fig.update_layout(title="Backtest: Total Liabilities (Actual vs Predicted)", template="plotly_dark", height=380)
+            fig.update_layout(title="Backtest: Total Liabilities (Actual vs Predicted)", template="plotly_dark", plot_bgcolor="#181B2E", paper_bgcolor="#181B2E", height=380)
             st.plotly_chart(fig, use_container_width=True)
 def render_scenario_planner():
     st.subheader("Scenario Planner (If X, then Y)")
@@ -510,12 +510,12 @@ def render_scenario_planner():
                     ],
                 },
             ))
-            gauge.update_layout(template="plotly_dark", height=320)
+            gauge.update_layout(template="plotly_dark", plot_bgcolor="#181B2E", paper_bgcolor="#181B2E", height=320)
             st.plotly_chart(gauge, use_container_width=True)
         with bcol:
             compare = pd.DataFrame({"Type": ["Baseline", "Scenario"], "Debt-to-Income": [base_ratio, proj_ratio]})
             fig = px.bar(compare, x="Type", y="Debt-to-Income", title="Baseline vs Scenario DTI")
-            fig.update_layout(template="plotly_dark", height=320)
+            fig.update_layout(template="plotly_dark", plot_bgcolor="#181B2E", paper_bgcolor="#181B2E", height=320)
             fig.add_hline(y=ratio_threshold, line_dash="dash", annotation_text="Threshold")
             st.plotly_chart(fig, use_container_width=True)
 def render_3d_viewer():
@@ -738,7 +738,7 @@ def render_recommendations():
                 hover_data=["Period", "Date"],
                 title="Revenue vs Liabilities (colored by DTI)",
             )
-            fig.update_layout(template="plotly_dark", height=520)
+            fig.update_layout(template="plotly_dark", plot_bgcolor="#181B2E", paper_bgcolor="#181B2E", height=520)
             st.plotly_chart(fig, use_container_width=True)
         st.markdown("### Uncertainty & limitations")
         st.write("• Data is simulated SEC-style; real-world results can differ.")
