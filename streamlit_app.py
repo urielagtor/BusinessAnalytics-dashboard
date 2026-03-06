@@ -812,7 +812,7 @@ def render_dictionary():
         st.markdown("## Key terms & metrics")
         with st.expander("Debt-to-Income (DTI)", expanded=True):
             st.write("**Definition:** Total Liabilities ÷ Revenue (quarterly).")
-            st.write("DTI = 1.5 means $1.50 of liabilities for every $1.00 of quarterly revenue.")
+            st.write("DTI = 1.5 means 1.50 of liabilities for every 1.00 of quarterly revenue.")
             st.write("Lower is better.")
         with st.expander("Revenue (Revenue_USD)", expanded=False):
             st.write("Top-line quarterly revenue. Increasing revenue improves DTI (it's the denominator).")
