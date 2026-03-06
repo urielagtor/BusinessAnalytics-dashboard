@@ -735,7 +735,7 @@ def render_3d_viewer():
               controls.dampingFactor = 0.05;
               controls.rotateSpeed = 0.4;
               controls.zoomSpeed = 0.5;
-              controls.panSpeed = 0.4;
+              controls.panSpeed = 0.15;
               controls.minDistance = 50;
               controls.maxDistance = 2000;
               controls.target.set(0, 50, 0);
