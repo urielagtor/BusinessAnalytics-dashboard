@@ -11,16 +11,24 @@
 # Run:
 #   pip install streamlit pandas openpyxl scikit-learn plotly numpy
 #   streamlit run streamlit_app.py
+# ── Imports ──────────────────────────────────────────────────────────────────
+# Standard library modules for text parsing, math, file I/O, and encoding
 import re
 import math
 import os
 import base64
 from pathlib import Path
+
+# Data manipulation and app framework
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+# Charting libraries (Plotly Express for quick charts, Graph Objects for custom ones)
 import plotly.express as px
 import plotly.graph_objects as go
+
+# Machine learning: Ridge regression pipeline with one-hot encoding for quarters
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
@@ -37,13 +45,14 @@ st.set_page_config(
 # ----------------------------
 # Branding (CoreWeave-ish)
 # ----------------------------
-CW_ACCENT = "#2F5BEA"
-CW_BG = "#070A12"
-CW_PANEL = "#0E1424"
-CW_TEXT = "#E9ECF5"
-CW_MUTED = "#A7B0C3"
-CW_WARN = "#FFB020"
-CW_DANGER = "#FF4D4D"
+# Define a dark-themed color palette used across CSS styles and chart elements
+CW_ACCENT = "#2F5BEA"   # Primary blue accent
+CW_BG = "#070A12"        # Page background (dark navy)
+CW_PANEL = "#0E1424"     # Card/panel background
+CW_TEXT = "#E9ECF5"      # Primary text color (light)
+CW_MUTED = "#A7B0C3"     # Secondary/muted text
+CW_WARN = "#FFB020"      # Warning indicators (amber)
+CW_DANGER = "#FF4D4D"    # Danger/alert indicators (red)
 st.markdown(
     f"""
     <style>
@@ -94,12 +103,14 @@ st.markdown(
 # ----------------------------
 # Paths (repo-relative)
 # ----------------------------
+# File paths for data, branding, and 3D model assets
 DATA_PATH = "data/CoreWeave_BalanceSheet_SEC_Filings_simulated.xlsx"
 LOGO_PATH = "CoreWeave Logo White.svg"
 MODELS_DIR = Path(__file__).parent / "models"
 # ----------------------------
 # Columns / model config
 # ----------------------------
+# METRICS: financial columns to parse as numeric from the Excel data
 METRICS = [
     "Revenue_USD",
     "Cost_of_Revenue_USD",
@@ -111,6 +122,7 @@ METRICS = [
     "Total_Assets_USD",
     "Total_Liabilities_USD",
 ]
+# FEATURE_COLS: inputs to the Ridge regression model (time index, quarter, and cost breakdowns)
 FEATURE_COLS = [
     "t",
     "Quarter",
@@ -124,6 +136,8 @@ FEATURE_COLS = [
 # ----------------------------
 # Helpers
 # ----------------------------
+
+# Format a number as a dollar string (e.g. $1,234) or return a dash for missing values
 def money(x) -> str:
     try:
         if x is None or (isinstance(x, float) and math.isnan(x)):
@@ -131,6 +145,7 @@ def money(x) -> str:
         return f"${x:,.0f}"
     except Exception:
         return "—"
+# Format a number as a percentage string (e.g. 12.3%) or return a dash for missing values
 def pct(x) -> str:
     try:
         if x is None or (isinstance(x, float) and math.isnan(x)):
@@ -138,6 +153,7 @@ def pct(x) -> str:
         return f"{x:,.1f}%"
     except Exception:
         return "—"
+# Extract the date from a period string like "Q1 (2024-03-31)" by parsing the parenthesized date
 def parse_period_date(period_str: str):
     if not isinstance(period_str, str):
         return pd.NaT
@@ -145,11 +161,13 @@ def parse_period_date(period_str: str):
     if not m:
         return pd.NaT
     return pd.to_datetime(m.group(1), errors="coerce")
+# Determine if a period string represents a quarter (Q1-Q4) or full year (FY)
 def period_type(period_str: str):
     if not isinstance(period_str, str):
         return None
     m = re.match(r"^(Q[1-4]|FY)", period_str.strip())
     return m.group(1) if m else None
+# Safely divide two numbers, returning NaN instead of raising on zero/None/invalid inputs
 def safe_div(a, b):
     try:
         if b is None:
@@ -160,11 +178,13 @@ def safe_div(a, b):
         return float(a) / b
     except Exception:
         return np.nan
+# Calculate Mean Absolute Percentage Error between actual and predicted values
 def mape(y_true, y_pred):
     y_true = np.array(y_true, dtype=float)
     y_pred = np.array(y_pred, dtype=float)
     denom = np.where(np.abs(y_true) < 1e-9, np.nan, np.abs(y_true))
     return float(np.nanmean(np.abs((y_true - y_pred) / denom)) * 100)
+# Load the Excel data file (cached so it only reads from disk once per session)
 @st.cache_data
 def load_data() -> pd.DataFrame:
     if not os.path.exists(DATA_PATH):
@@ -172,6 +192,8 @@ def load_data() -> pd.DataFrame:
             f"Data file not found at '{DATA_PATH}'. Make sure it exists in your repo."
         )
     return pd.read_excel(DATA_PATH)
+# Clean and prepare the raw data: parse dates, filter to quarterly rows,
+# add time index, and compute derived ratios (Debt-to-Income, Operating Margin)
 def prep_df(df_raw: pd.DataFrame):
     df = df_raw.copy()
     if "Period" not in df.columns:
@@ -195,6 +217,8 @@ def prep_df(df_raw: pd.DataFrame):
         axis=1,
     )
     return df, df_q
+# Build a Ridge regression pipeline that one-hot encodes the quarter
+# and passes numeric features through for trend-based forecasting
 def build_model():
     numeric_features = [c for c in FEATURE_COLS if c != "Quarter"]
     categorical_features = ["Quarter"]
@@ -207,6 +231,8 @@ def build_model():
     )
     model = Ridge(alpha=1.0, random_state=42)
     return Pipeline([("pre", pre), ("model", model)])
+# Walk-forward backtest: train on quarters 1..i, predict quarter i+1,
+# then compute error metrics (MAE, RMSE, MAPE) across all test points
 def time_series_backtest(df_q: pd.DataFrame, target_col: str, min_train: int = 6):
     pipe = build_model()
     use_cols = [c for c in FEATURE_COLS if c in df_q.columns] + ["Quarter"]
@@ -233,6 +259,8 @@ def time_series_backtest(df_q: pd.DataFrame, target_col: str, min_train: int = 6
     mape_val = mape(actuals, preds)
     out = pd.DataFrame({"Date": dates, "Actual": actuals, "Predicted": preds}).sort_values("Date")
     return {"series": out, "mae": mae, "rmse": rmse, "mape": mape_val}
+# Train on all available data and forecast the next quarter's value
+# by constructing a synthetic "next row" with incremented time index and quarter
 def fit_and_forecast_next(df_q: pd.DataFrame, target_col: str):
     pipe = build_model()
     use_cols = [c for c in FEATURE_COLS if c in df_q.columns] + ["Quarter"]
@@ -250,6 +278,8 @@ def fit_and_forecast_next(df_q: pd.DataFrame, target_col: str):
     next_row["Quarter"] = next_quarter
     y_next = float(pipe.predict(pd.DataFrame([next_row])[use_cols])[0])
     return {"next_date": next_date, "next_pred": y_next}
+# Return a status label ("Healthy", "Watch", or "Needs action") based on
+# how the current DTI compares to the alert threshold
 def status_label(dti, threshold):
     if np.isnan(dti):
         return ("Unknown", "Data incomplete")
@@ -258,6 +288,8 @@ def status_label(dti, threshold):
     if dti >= (threshold * 0.9):
         return ("Watch", "DTI near threshold")
     return ("Healthy", "DTI below threshold")
+# Generate plain-English recommendations based on the projected DTI ratio
+# and the user's scenario lever settings (revenue growth, OpEx change, liabilities)
 def rule_recommendation(projected_ratio, levers, threshold):
     rev_growth, opex_change, liab_paydown = levers
     msgs = []
@@ -280,6 +312,7 @@ def rule_recommendation(projected_ratio, levers, threshold):
 # ----------------------------
 # Load data
 # ----------------------------
+# Read the Excel file, clean it, and compute baseline forecasts for the next quarter
 try:
     df_raw = load_data()
     df_all, df_q = prep_df(df_raw)
@@ -291,7 +324,7 @@ if df_q.empty:
     st.stop()
 latest = df_q.sort_values("Date").iloc[-1]
 current_ratio = float(latest.get("Debt_to_Income", np.nan))
-# Baseline forecast shared across pages
+# Baseline forecast shared across pages — predict next-quarter revenue and liabilities
 fc_liab = fit_and_forecast_next(df_q, "Total_Liabilities_USD")
 fc_rev = fit_and_forecast_next(df_q, "Revenue_USD")
 base_rev = float(fc_rev["next_pred"]) if fc_rev else np.nan
@@ -301,6 +334,8 @@ next_label = fc_liab["next_date"].strftime("%b %d, %Y") if fc_liab else "Next qu
 # ----------------------------
 # Sidebar Navigation + Controls
 # ----------------------------
+# Sidebar contains: logo, page navigation radio, DTI threshold slider,
+# backtest training size slider, and a live DTI status indicator
 with st.sidebar:
     if os.path.exists(LOGO_PATH):
         st.image(LOGO_PATH, use_container_width=True)
@@ -333,6 +368,7 @@ with st.sidebar:
 # ----------------------------
 # Main Header + Executive Summary
 # ----------------------------
+# Top-of-page KPI cards visible on every page: current DTI, forecast DTI, threshold, status
 st.markdown("<span class='cw-badge'>Executive Decision Dashboard</span>", unsafe_allow_html=True)
 st.title("Debt-to-Income Strategy Dashboard")
 st.caption("Goal: improve Debt-to-Income (Total Liabilities ÷ Revenue) using forecasts + what-if scenarios.")
@@ -345,6 +381,8 @@ st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
 # ----------------------------
 # Page renderers
 # ----------------------------
+
+# OVERVIEW PAGE: KPI cards, Revenue vs Liabilities line chart, DTI trend, executive notes
 def render_overview():
     st.subheader("Overview")
     current_rev = float(latest.get("Revenue_USD", np.nan))
@@ -401,6 +439,7 @@ def render_overview():
         file_name="coreweave_quarterly_clean.csv",
         mime="text/csv",
     )
+# FORECAST PAGE: next-quarter baseline predictions with walk-forward backtest charts
 def render_forecast():
     st.subheader("Forecast")
     left, right = st.columns([1, 3], vertical_alignment="top")
@@ -439,6 +478,8 @@ def render_forecast():
             fig.add_trace(go.Scatter(x=s["Date"], y=s["Predicted"], mode="lines+markers", name="Predicted"))
             fig.update_layout(title="Backtest: Total Liabilities (Actual vs Predicted)", template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=380)
             st.plotly_chart(fig, use_container_width=True)
+# SCENARIO PLANNER PAGE: "If X, then Y" — adjust revenue growth, OpEx, and
+# liability levers to see projected DTI with a gauge chart and bar comparison
 def render_scenario_planner():
     st.subheader("Scenario Planner (If X, then Y)")
     if np.isnan(base_rev) or np.isnan(base_liab) or np.isnan(base_ratio):
@@ -518,6 +559,8 @@ def render_scenario_planner():
             fig.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=320)
             fig.add_hline(y=ratio_threshold, line_dash="dash", annotation_text="Threshold")
             st.plotly_chart(fig, use_container_width=True)
+# 3D VIEWER PAGE: loads FBX model files from ./models and renders them
+# in-browser using Three.js embedded in a Streamlit HTML component
 def render_3d_viewer():
     st.subheader("Data Center 3D Viewer")
     _fbx_files = {p.stem: p for p in sorted(MODELS_DIR.glob("*.fbx"))} if MODELS_DIR.exists() else {}
@@ -690,6 +733,8 @@ def render_3d_viewer():
         components.html(threejs_html.replace("%%FBX_B64%%", fbx_b64), height=640)
     else:
         st.info("No FBX models found in the models/ directory.")
+# RECOMMENDATIONS PAGE: context-aware action items based on current DTI status,
+# governance trigger thresholds, and a Revenue vs Liabilities scatter plot
 def render_recommendations():
     st.subheader("Recommendations & Risks")
     left, right = st.columns([1, 3], vertical_alignment="top")
@@ -744,6 +789,8 @@ def render_recommendations():
         st.write("• Data is simulated SEC-style; real-world results can differ.")
         st.write("• Forecasts assume stable relationships; structural breaks (market/financing) reduce accuracy.")
         st.write("• Scenario planner uses transparent business rules; use as decision support, not guarantees.")
+# DICTIONARY PAGE: glossary of terms, quick-start guide, metric definitions,
+# and explanation of how to use the Scenario Planner
 def render_dictionary():
     st.subheader("Dictionary (What everything means + how to use this dashboard)")
     left, right = st.columns([1, 3], vertical_alignment="top")
@@ -805,7 +852,7 @@ def render_dictionary():
             """
         )
 # ----------------------------
-# Route
+# Route — render the page selected in the sidebar
 # ----------------------------
 if page == "Overview":
     render_overview()
