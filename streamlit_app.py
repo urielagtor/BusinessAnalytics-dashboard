@@ -53,6 +53,18 @@ CW_TEXT = "#E9ECF5"      # Primary text color (light)
 CW_MUTED = "#A7B0C3"     # Secondary/muted text
 CW_WARN = "#FFB020"      # Warning indicators (amber)
 CW_DANGER = "#FF4D4D"    # Danger/alert indicators (red)
+
+import plotly.io as pio
+_dark = pio.templates["plotly_dark"]
+_dark.layout.xaxis.showline = True
+_dark.layout.xaxis.linecolor = "white"
+_dark.layout.xaxis.gridcolor = "rgba(255,255,255,0.15)"
+_dark.layout.xaxis.tickcolor = "white"
+_dark.layout.yaxis.showline = True
+_dark.layout.yaxis.linecolor = "white"
+_dark.layout.yaxis.gridcolor = "rgba(255,255,255,0.15)"
+_dark.layout.yaxis.tickcolor = "white"
+
 st.markdown(
     f"""
     <style>
