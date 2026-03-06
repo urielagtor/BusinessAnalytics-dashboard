@@ -115,8 +115,13 @@ st.markdown(
         margin: 10px 0 18px 0;
       }}
       /* Sidebar nav buttons — match native st.navigation look */
+      [data-testid="stSidebar"] .stElementContainer:has(.stButton) {{
+        margin: 0 !important;
+        padding: 0 !important;
+      }}
       [data-testid="stSidebar"] .stButton {{
         margin: 0 !important;
+        padding: 0 !important;
       }}
       [data-testid="stSidebar"] .stButton > button {{
         background: transparent !important;
@@ -126,12 +131,13 @@ st.markdown(
         color: {CW_MUTED} !important;
         text-align: left !important;
         border-radius: 0.5rem !important;
-        padding: 0.5rem 0.75rem !important;
-        font-size: 0.875rem !important;
+        padding: 0.35rem 0.75rem !important;
+        font-size: 0.85rem !important;
         font-weight: 400 !important;
-        line-height: 1.5 !important;
+        line-height: 1.4 !important;
         margin: 0 !important;
         min-height: 0 !important;
+        height: auto !important;
         gap: 0.5rem !important;
       }}
       [data-testid="stSidebar"] .stButton > button:hover {{
