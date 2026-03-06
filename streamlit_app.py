@@ -685,14 +685,6 @@ def render_3d_viewer():
                 40% {{ transform:scale(1);opacity:1; }}
             }}
         </style>
-        <script>
-            window.addEventListener('message', function(e) {{
-                if (e.data === 'model-loaded') {{
-                    var el = document.getElementById('{_loader_id}');
-                    if (el) el.style.display = 'none';
-                }}
-            }});
-        </script>
         """, unsafe_allow_html=True)
         fbx_b64 = base64.b64encode(_fbx_files[selected_model].read_bytes()).decode()
         threejs_html = """
@@ -749,6 +741,14 @@ def render_3d_viewer():
         <div id="error-msg"></div>
         <div id="controls-hint">Drag to rotate &middot; Scroll to zoom &middot; Right-drag to pan</div>
         <script>
+          function _hideParentOverlay() {
+            try {
+              var w = window;
+              while (w !== w.parent) { w = w.parent; }
+              var el = w.document.getElementById('viewer-loader-overlay');
+              if (el) el.style.display = 'none';
+            } catch(e) {}
+          }
           var _scripts = [
             "https://unpkg.com/three@0.99.0/build/three.min.js",
             "https://unpkg.com/three@0.99.0/examples/js/libs/inflate.min.js",
@@ -763,7 +763,7 @@ def render_3d_viewer():
             s.onload = function() { _loaded++; _loadNext(); };
             s.onerror = function() {
               document.getElementById('loading').style.display = 'none';
-              parent.postMessage('model-loaded', '*');
+              _hideParentOverlay();
               var el = document.getElementById('error-msg');
               el.style.display = 'block';
               el.textContent = 'Failed to load: ' + _scripts[_loaded];
@@ -849,11 +849,11 @@ def render_3d_viewer():
                 controls.target.set(0, size.y / 2, 0);
                 controls.update();
                 document.getElementById('loading').style.display = 'none';
-                parent.postMessage('model-loaded', '*');
+                _hideParentOverlay();
                 URL.revokeObjectURL(blobUrl);
               }, undefined, function(err) {
                 document.getElementById('loading').style.display = 'none';
-                parent.postMessage('model-loaded', '*');
+                _hideParentOverlay();
                 var el = document.getElementById('error-msg');
                 el.style.display = 'block';
                 el.textContent = 'Failed to load model: ' + (err.message || err);
@@ -873,7 +873,7 @@ def render_3d_viewer():
               animate();
             } catch(e) {
               document.getElementById('loading').style.display = 'none';
-              parent.postMessage('model-loaded', '*');
+              _hideParentOverlay();
               var el = document.getElementById('error-msg');
               el.style.display = 'block';
               el.textContent = 'Error: ' + e.message;
