@@ -698,8 +698,8 @@ def render_3d_viewer():
         <html>
         <head>
         <style>
-          html, body { margin: 0; overflow: hidden; background: #000; width: 100%%; height: 100%%; }
-          canvas { display: block; width: 100%%; height: 100%%; }
+          html, body { margin: 0; overflow: hidden; background: #000; width: 100%; height: 100%; }
+          canvas { display: block; width: 100%; height: 100%; }
           #loading {
             position: absolute; top: 0; left: 0;
             width: 100vw; height: 100vh;
@@ -714,7 +714,7 @@ def render_3d_viewer():
             margin-bottom: 10px;
           }
           .dot-loader span {
-            width: 10px; height: 10px; border-radius: 50%%;
+            width: 10px; height: 10px; border-radius: 50%;
             background: rgba(39,65,231,0.85);
             animation: dotBounce 1.4s ease-in-out infinite both;
           }
@@ -722,18 +722,18 @@ def render_3d_viewer():
           .dot-loader span:nth-child(2) { animation-delay: -0.16s; }
           .dot-loader span:nth-child(3) { animation-delay: 0s; }
           @keyframes dotBounce {
-            0%%, 80%%, 100%% { transform: scale(0.4); opacity: 0.4; }
-            40%% { transform: scale(1); opacity: 1; }
+            0%, 80%, 100% { transform: scale(0.4); opacity: 0.4; }
+            40% { transform: scale(1); opacity: 1; }
           }
           #controls-hint {
-            position: absolute; bottom: 12px; left: 50%%;
-            transform: translateX(-50%%);
+            position: absolute; bottom: 12px; left: 50%;
+            transform: translateX(-50%);
             color: rgba(249,250,252,0.45); font-family: sans-serif;
             font-size: 12px; pointer-events: none; user-select: none;
           }
           #error-msg {
-            position: absolute; top: 50%%; left: 50%%;
-            transform: translate(-50%%, -50%%);
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
             color: #FB7185; font-family: sans-serif;
             font-size: 14px; display: none; text-align: center;
           }
