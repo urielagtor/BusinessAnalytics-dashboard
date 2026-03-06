@@ -114,6 +114,18 @@ st.markdown(
         background: rgba(255,255,255,0.10);
         margin: 10px 0 18px 0;
       }}
+      /* Sidebar nav buttons */
+      [data-testid="stSidebar"] .stButton > button {{
+        background: transparent !important;
+        border: none !important;
+        color: {CW_MUTED} !important;
+        text-align: left !important;
+        border-radius: 8px !important;
+      }}
+      [data-testid="stSidebar"] .stButton > button:hover {{
+        background: rgba(255,255,255,0.06) !important;
+        color: {CW_TEXT} !important;
+      }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -354,9 +366,42 @@ next_label = fc_liab["next_date"].strftime("%b %d, %Y") if fc_liab else "Next qu
 # ----------------------------
 # Sidebar contains: logo, page navigation radio, DTI threshold slider,
 # backtest training size slider, and a live DTI status indicator
-if os.path.exists(LOGO_PATH):
-    st.logo(LOGO_PATH)
+_NAV_ITEMS = [
+    ("Overview", ":material/monitoring:"),
+    ("Forecast", ":material/trending_up:"),
+    ("Scenario Planner", ":material/science:"),
+    ("3D Viewer", ":material/view_in_ar:"),
+    ("Recommendations & Risks", ":material/warning:"),
+    ("Dictionary", ":material/menu_book:"),
+]
+if "page" not in st.session_state:
+    st.session_state["page"] = "Overview"
 with st.sidebar:
+    if os.path.exists(LOGO_PATH):
+        st.image(LOGO_PATH, use_container_width=True)
+    else:
+        st.markdown("<span class='cw-badge'>CoreWeave</span>", unsafe_allow_html=True)
+    st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
+    for _label, _icon in _NAV_ITEMS:
+        if st.button(
+            _label,
+            key=f"nav_{_label}",
+            icon=_icon,
+            use_container_width=True,
+        ):
+            st.session_state["page"] = _label
+            st.rerun()
+    _active_idx = next(i for i, (l, _) in enumerate(_NAV_ITEMS) if l == st.session_state["page"])
+    st.markdown(
+        f"""<style>
+        [data-testid="stSidebar"] .stButton:nth-of-type({_active_idx + 1}) > button {{
+            background: {CW_ACCENT} !important;
+            color: {CW_TEXT} !important;
+        }}
+        </style>""",
+        unsafe_allow_html=True,
+    )
+    st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
     st.markdown("### Controls")
     ratio_threshold = st.slider(
         "DTI alert threshold",
@@ -863,12 +908,12 @@ def render_dictionary():
 # ----------------------------
 # Route — render the page selected in the sidebar
 # ----------------------------
-page = st.navigation([
-    st.Page(render_overview, title="Overview", icon=":material/monitoring:"),
-    st.Page(render_forecast, title="Forecast", icon=":material/trending_up:"),
-    st.Page(render_scenario_planner, title="Scenario Planner", icon=":material/science:"),
-    st.Page(render_3d_viewer, title="3D Viewer", icon=":material/view_in_ar:"),
-    st.Page(render_recommendations, title="Recommendations & Risks", icon=":material/warning:"),
-    st.Page(render_dictionary, title="Dictionary", icon=":material/menu_book:"),
-])
-page.run()
+_PAGE_MAP = {
+    "Overview": render_overview,
+    "Forecast": render_forecast,
+    "Scenario Planner": render_scenario_planner,
+    "3D Viewer": render_3d_viewer,
+    "Recommendations & Risks": render_recommendations,
+    "Dictionary": render_dictionary,
+}
+_PAGE_MAP[st.session_state["page"]]()
