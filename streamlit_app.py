@@ -150,6 +150,7 @@ st.markdown(
       }}
       [data-testid="stSidebar"] .stButton > button > div {{
         gap: 0.5rem !important;
+        justify-content: flex-start !important;
       }}
       [data-testid="stSidebar"] .stButton > button span[data-testid="stIconMaterial"] {{
         font-size: 1.25rem !important;
