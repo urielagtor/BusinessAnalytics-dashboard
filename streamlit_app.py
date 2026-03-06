@@ -114,6 +114,26 @@ st.markdown(
         background: rgba(255,255,255,0.10);
         margin: 10px 0 18px 0;
       }}
+      /* Sidebar nav button styling */
+      [data-testid="stSidebar"] .stButton > button {{
+        background: transparent !important;
+        border: none !important;
+        color: {CW_MUTED} !important;
+        text-align: left !important;
+        padding: 10px 14px !important;
+        border-radius: 10px !important;
+        font-size: 15px !important;
+        transition: background 0.15s, color 0.15s !important;
+        width: 100% !important;
+      }}
+      [data-testid="stSidebar"] .stButton > button:hover {{
+        background: rgba(255,255,255,0.06) !important;
+        color: {CW_TEXT} !important;
+      }}
+      [data-testid="stSidebar"] .stButton > button > div > p > strong {{
+        color: {CW_TEXT} !important;
+        font-weight: 600 !important;
+      }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -360,11 +380,37 @@ with st.sidebar:
     else:
         st.markdown("<span class='cw-badge'>CoreWeave</span>", unsafe_allow_html=True)
     st.markdown("### Navigation")
-    page = st.radio(
-        "Go to",
-        ["Overview", "Forecast", "Scenario Planner", "3D Viewer", "Recommendations & Risks", "Dictionary"],
-        label_visibility="collapsed",
+    _NAV_ITEMS = [
+        ("\U0001F4CA", "Overview"),
+        ("\U0001F4C8", "Forecast"),
+        ("\U0001F9EA", "Scenario Planner"),
+        ("\U0001F4BB", "3D Viewer"),
+        ("\U0001F6A8", "Recommendations & Risks"),
+        ("\U0001F4D6", "Dictionary"),
+    ]
+    if "page" not in st.session_state:
+        st.session_state["page"] = "Overview"
+    for _icon, _label in _NAV_ITEMS:
+        _is_active = st.session_state["page"] == _label
+        if st.button(
+            f"**{_icon}  {_label}**" if _is_active else f"{_icon}  {_label}",
+            key=f"nav_{_label}",
+            use_container_width=True,
+        ):
+            st.session_state["page"] = _label
+            st.rerun()
+    # Inject highlight style for the active nav button
+    _active_idx = next(i for i, (_, l) in enumerate(_NAV_ITEMS) if l == st.session_state["page"])
+    st.markdown(
+        f"""<style>
+        [data-testid="stSidebar"] .stButton:nth-of-type({_active_idx + 1}) > button {{
+            background: {CW_ACCENT} !important;
+            color: {CW_TEXT} !important;
+        }}
+        </style>""",
+        unsafe_allow_html=True,
     )
+    page = st.session_state["page"]
     st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
     st.markdown("### Controls")
     ratio_threshold = st.slider(
