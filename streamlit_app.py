@@ -114,17 +114,40 @@ st.markdown(
         background: rgba(255,255,255,0.10);
         margin: 10px 0 18px 0;
       }}
-      /* Sidebar nav buttons */
+      /* Sidebar nav buttons — match native st.navigation look */
+      [data-testid="stSidebar"] .stButton {{
+        margin: 0 !important;
+      }}
       [data-testid="stSidebar"] .stButton > button {{
         background: transparent !important;
         border: none !important;
+        box-shadow: none !important;
+        outline: none !important;
         color: {CW_MUTED} !important;
         text-align: left !important;
-        border-radius: 8px !important;
+        border-radius: 0.5rem !important;
+        padding: 0.5rem 0.75rem !important;
+        font-size: 0.875rem !important;
+        font-weight: 400 !important;
+        line-height: 1.5 !important;
+        margin: 0 !important;
+        min-height: 0 !important;
+        gap: 0.5rem !important;
       }}
       [data-testid="stSidebar"] .stButton > button:hover {{
-        background: rgba(255,255,255,0.06) !important;
+        background: rgba(151, 166, 195, 0.1) !important;
         color: {CW_TEXT} !important;
+      }}
+      [data-testid="stSidebar"] .stButton > button:focus {{
+        box-shadow: none !important;
+        outline: none !important;
+      }}
+      [data-testid="stSidebar"] .stButton > button > div {{
+        gap: 0.5rem !important;
+      }}
+      [data-testid="stSidebar"] .stButton > button span[data-testid="stIconMaterial"] {{
+        font-size: 1.25rem !important;
+        color: inherit !important;
       }}
     </style>
     """,
@@ -395,8 +418,9 @@ with st.sidebar:
     st.markdown(
         f"""<style>
         [data-testid="stSidebar"] .stButton:nth-of-type({_active_idx + 1}) > button {{
-            background: {CW_ACCENT} !important;
+            background: rgba(151, 166, 195, 0.15) !important;
             color: {CW_TEXT} !important;
+            font-weight: 600 !important;
         }}
         </style>""",
         unsafe_allow_html=True,
