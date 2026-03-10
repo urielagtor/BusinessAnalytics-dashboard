@@ -11,107 +11,180 @@
 # Run:
 #   pip install streamlit pandas openpyxl scikit-learn plotly numpy
 #   streamlit run streamlit_app.py
-
+# ── Imports ──────────────────────────────────────────────────────────────────
+# Standard library modules for text parsing, math, file I/O, and encoding
 import re
 import math
 import os
 import base64
 from pathlib import Path
-import base64
+
+# Data manipulation and app framework
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+# Charting libraries (Plotly Express for quick charts, Graph Objects for custom ones)
 import plotly.express as px
 import plotly.graph_objects as go
 
+# Machine learning: Ridge regression pipeline with one-hot encoding for quarters
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.linear_model import Ridge
-from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+# ----------------------------
+# Page config
+# ----------------------------
+st.set_page_config(
+    page_title="CoreWeave | Debt-to-Income Strategy Dashboard",
+    page_icon="CoreWeave Logo White.svg",
+    layout="wide",
+)
+# ----------------------------
+# Branding (CoreWeave-ish)
+# ----------------------------
+# Define a dark-themed color palette used across CSS styles and chart elements
+CW_ACCENT = "#2F5BEA"   # Primary blue accent
+CW_BG = "#070A12"        # Page background (dark navy)
+CW_PANEL = "#0E1424"     # Card/panel background
+CW_TEXT = "#E9ECF5"      # Primary text color (light)
+CW_MUTED = "#A7B0C3"     # Secondary/muted text
+CW_WARN = "#FFB020"      # Warning indicators (amber)
+CW_DANGER = "#FF4D4D"    # Danger/alert indicators (red)
 
-st.set_page_config(page_title="CoreWeave | Revenue Dashboard", page_icon="CoreWeave Logo White.svg", layout="wide")
+import plotly.io as pio
+_dark = pio.templates["plotly_dark"]
+_dark.layout.xaxis.showgrid = False
+_dark.layout.xaxis.showline = False
+_dark.layout.xaxis.tickcolor = "white"
+_dark.layout.xaxis.tickfont = dict(color="white")
+_dark.layout.yaxis.showline = False
+_dark.layout.yaxis.showgrid = True
+_dark.layout.yaxis.gridcolor = "white"
+_dark.layout.yaxis.gridwidth = 1
+_dark.layout.yaxis.tickcolor = "white"
+_dark.layout.yaxis.tickfont = dict(color="white")
+_AXIS_STYLE = dict(
+    xaxis=dict(showgrid=False, showline=False, tickcolor="white", tickfont=dict(color="white")),
+    yaxis=dict(showline=False, showgrid=True, gridcolor="white", gridwidth=1, tickcolor="white", tickfont=dict(color="white")),
+)
 
-# -----------------------------
-# CoreWeave brand chart palette
-# -----------------------------
-CW_BLUE = "#2741E7"
-CW_CYAN = "#00D4FF"
-CW_VIOLET = "#7B61FF"
-CW_EMERALD = "#34D399"
-CW_AMBER = "#FBBF24"
-CW_ROSE = "#FB7185"
-CW_SKY = "#38BDF8"
-
-CHART_PALETTE = [CW_BLUE, CW_CYAN, CW_VIOLET, CW_EMERALD, CW_AMBER, CW_SKY, CW_ROSE]
-PALETTE_SCALE = alt.Scale(range=CHART_PALETTE)
-
-# -----------------------------
-# Minimal CSS polish
-# -----------------------------
 st.markdown(
     f"""
     <style>
-      h1 {{
-        font-weight: 700;
-        letter-spacing: -0.025em;
+      .stApp {{
+        background: linear-gradient(180deg, {CW_BG} 0%, #050712 100%);
+        color: {CW_TEXT};
       }}
-      h2, h3 {{
-        font-weight: 600;
+      h1,h2,h3,h4 {{ color: {CW_TEXT}; }}
+      .cw-badge{{
+        display:inline-block;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(47, 91, 234, 0.14);
+        border: 1px solid rgba(47, 91, 234, 0.35);
+        color: {CW_TEXT};
+        font-size: 12px;
+        letter-spacing: 0.2px;
       }}
-      div[data-testid="stMetricValue"] {{
-        font-weight: 700;
-        font-size: 1.6rem;
+      .cw-card{{
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        padding: 14px 16px;
       }}
-      div[data-testid="stMetricLabel"] {{
-        font-weight: 500;
-        text-transform: uppercase;
-        font-size: 0.75rem;
-        letter-spacing: 0.05em;
+      .cw-muted {{ color: {CW_MUTED}; }}
+      .cw-warn {{ color: {CW_WARN}; }}
+      .cw-danger {{ color: {CW_DANGER}; }}
+      div[data-testid="metric-container"]{{
+        background: {CW_PANEL};
+        border: 1px solid rgba(255,255,255,0.08);
+        padding: 14px 16px;
+        border-radius: 14px;
       }}
-      .cw-accent {{
-        height: 4px;
-        width: 48px;
-        background: linear-gradient(90deg, {CW_BLUE}, {CW_CYAN});
-        border-radius: 2px;
-        margin: 0 0 1.5rem 0;
+      /* Sidebar styling polish */
+      [data-testid="stSidebar"] {{
+        background: rgba(14, 20, 36, 0.85);
+        border-right: 1px solid rgba(255,255,255,0.08);
       }}
-
-      /* Sidebar styling */
-      section[data-testid="stSidebar"] {{
-        border-right: 1px solid rgba(255, 255, 255, 0.06);
+      .cw-divider {{
+        height: 1px;
+        background: rgba(255,255,255,0.10);
+        margin: 10px 0 18px 0;
       }}
-      section[data-testid="stSidebar"] [data-testid="stSidebarHeader"] {{
-        padding-bottom: 0.75rem;
+      /* Sidebar nav buttons — match native st.navigation look */
+      [data-testid="stSidebar"] .stElementContainer:has(.stButton) {{
+        margin: 0 !important;
+        padding: 0 !important;
       }}
-      section[data-testid="stSidebar"] h1 {{
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        color: rgba(249, 250, 252, 0.5);
+      [data-testid="stSidebar"] .stButton {{
+        margin: 0 !important;
+        padding: 0 !important;
       }}
-      section[data-testid="stSidebar"] .stSlider label,
-      section[data-testid="stSidebar"] .stMultiSelect label,
-      section[data-testid="stSidebar"] .stCheckbox label {{
-        font-size: 0.8rem;
-        letter-spacing: 0.02em;
+      [data-testid="stSidebar"] .stButton > button {{
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        outline: none !important;
+        color: {CW_MUTED} !important;
+        text-align: left !important;
+        border-radius: 0.5rem !important;
+        padding: 0.35rem 0.75rem !important;
+        font-size: 0.85rem !important;
+        font-weight: 400 !important;
+        line-height: 1.4 !important;
+        margin: 0 !important;
+        min-height: 0 !important;
+        height: auto !important;
+        gap: 0.5rem !important;
+      }}
+      [data-testid="stSidebar"] .stButton > button:hover {{
+        background: rgba(255, 255, 255, 0.04) !important;
+        color: {CW_TEXT} !important;
+      }}
+      [data-testid="stSidebar"] .stButton > button:focus {{
+        box-shadow: none !important;
+        outline: none !important;
+      }}
+      [data-testid="stSidebar"] .stButton > button,
+      [data-testid="stSidebar"] .stButton > button > div,
+      [data-testid="stSidebar"] .stButton > button > div > * {{
+        justify-content: flex-start !important;
+        align-items: center !important;
+        display: flex !important;
+        gap: 0.5rem !important;
+      }}
+      [data-testid="stSidebar"] .stButton > button > div > p {{
+        text-align: left !important;
+        width: auto !important;
+      }}
+      [data-testid="stSidebar"] .stButton > button span[data-testid="stIconMaterial"] {{
+        font-size: 1.25rem !important;
+        color: inherit !important;
+      }}
+      /* Active nav button (primary type) */
+      [data-testid="stSidebar"] .stButton > button[data-testid="stBaseButton-primary"] {{
+        background: rgba(255, 255, 255, 0.08) !important;
+        color: {CW_TEXT} !important;
+        font-weight: 600 !important;
       }}
     </style>
-    <div class="cw-accent"></div>
     """,
     unsafe_allow_html=True,
 )
-
 # ----------------------------
 # Paths (repo-relative)
 # ----------------------------
+# File paths for data, branding, and 3D model assets
 DATA_PATH = "data/CoreWeave_BalanceSheet_SEC_Filings_simulated.xlsx"
 LOGO_PATH = "CoreWeave Logo White.svg"
 MODELS_DIR = Path(__file__).parent / "models"
-
 # ----------------------------
 # Columns / model config
 # ----------------------------
+# METRICS: financial columns to parse as numeric from the Excel data
 METRICS = [
     "Revenue_USD",
     "Cost_of_Revenue_USD",
@@ -123,7 +196,7 @@ METRICS = [
     "Total_Assets_USD",
     "Total_Liabilities_USD",
 ]
-
+# FEATURE_COLS: inputs to the Ridge regression model (time index, quarter, and cost breakdowns)
 FEATURE_COLS = [
     "t",
     "Quarter",
@@ -134,11 +207,11 @@ FEATURE_COLS = [
     "Total_Operating_Expenses_USD",
     "Operating_Income_USD",
 ]
-
-
 # ----------------------------
 # Helpers
 # ----------------------------
+
+# Format a number as a dollar string (e.g. $1,234) or return a dash for missing values
 def money(x) -> str:
     try:
         if x is None or (isinstance(x, float) and math.isnan(x)):
@@ -146,8 +219,7 @@ def money(x) -> str:
         return f"${x:,.0f}"
     except Exception:
         return "—"
-
-
+# Format a number as a percentage string (e.g. 12.3%) or return a dash for missing values
 def pct(x) -> str:
     try:
         if x is None or (isinstance(x, float) and math.isnan(x)):
@@ -155,8 +227,7 @@ def pct(x) -> str:
         return f"{x:,.1f}%"
     except Exception:
         return "—"
-
-
+# Extract the date from a period string like "Q1 (2024-03-31)" by parsing the parenthesized date
 def parse_period_date(period_str: str):
     if not isinstance(period_str, str):
         return pd.NaT
@@ -164,15 +235,13 @@ def parse_period_date(period_str: str):
     if not m:
         return pd.NaT
     return pd.to_datetime(m.group(1), errors="coerce")
-
-
+# Determine if a period string represents a quarter (Q1-Q4) or full year (FY)
 def period_type(period_str: str):
     if not isinstance(period_str, str):
         return None
     m = re.match(r"^(Q[1-4]|FY)", period_str.strip())
     return m.group(1) if m else None
-
-
+# Safely divide two numbers, returning NaN instead of raising on zero/None/invalid inputs
 def safe_div(a, b):
     try:
         if b is None:
@@ -183,15 +252,13 @@ def safe_div(a, b):
         return float(a) / b
     except Exception:
         return np.nan
-
-
+# Calculate Mean Absolute Percentage Error between actual and predicted values
 def mape(y_true, y_pred):
     y_true = np.array(y_true, dtype=float)
     y_pred = np.array(y_pred, dtype=float)
     denom = np.where(np.abs(y_true) < 1e-9, np.nan, np.abs(y_true))
     return float(np.nanmean(np.abs((y_true - y_pred) / denom)) * 100)
-
-
+# Load the Excel data file (cached so it only reads from disk once per session)
 @st.cache_data
 def load_data() -> pd.DataFrame:
     if not os.path.exists(DATA_PATH):
@@ -199,44 +266,36 @@ def load_data() -> pd.DataFrame:
             f"Data file not found at '{DATA_PATH}'. Make sure it exists in your repo."
         )
     return pd.read_excel(DATA_PATH)
-
-
+# Clean and prepare the raw data: parse dates, filter to quarterly rows,
+# add time index, and compute derived ratios (Debt-to-Income, Operating Margin)
 def prep_df(df_raw: pd.DataFrame):
     df = df_raw.copy()
     if "Period" not in df.columns:
         raise ValueError("Expected a 'Period' column in the Excel file.")
-
     df["Date"] = df["Period"].apply(parse_period_date)
     df["Period_Type"] = df["Period"].apply(period_type)
-
     for c in METRICS:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
-
     df = df[df["Date"].notna()].copy().sort_values("Date").reset_index(drop=True)
-
     df_q = df[df["Period_Type"].str.startswith("Q", na=False)].copy()
     df_q = df_q.sort_values("Date").reset_index(drop=True)
-
     df_q["Quarter"] = df_q["Date"].dt.quarter
     df_q["t"] = np.arange(len(df_q), dtype=int)
-
     df_q["Debt_to_Income"] = df_q.apply(
         lambda r: safe_div(r.get("Total_Liabilities_USD", np.nan), r.get("Revenue_USD", np.nan)),
         axis=1,
     )
-
     df_q["Op_Margin"] = df_q.apply(
         lambda r: safe_div(r.get("Operating_Income_USD", np.nan), r.get("Revenue_USD", np.nan)),
         axis=1,
     )
     return df, df_q
-
-
+# Build a Ridge regression pipeline that one-hot encodes the quarter
+# and passes numeric features through for trend-based forecasting
 def build_model():
     numeric_features = [c for c in FEATURE_COLS if c != "Quarter"]
     categorical_features = ["Quarter"]
-
     pre = ColumnTransformer(
         transformers=[
             ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_features),
@@ -246,66 +305,55 @@ def build_model():
     )
     model = Ridge(alpha=1.0, random_state=42)
     return Pipeline([("pre", pre), ("model", model)])
-
-
+# Walk-forward backtest: train on quarters 1..i, predict quarter i+1,
+# then compute error metrics (MAE, RMSE, MAPE) across all test points
 def time_series_backtest(df_q: pd.DataFrame, target_col: str, min_train: int = 6):
     pipe = build_model()
     use_cols = [c for c in FEATURE_COLS if c in df_q.columns] + ["Quarter"]
     use_cols = list(dict.fromkeys(use_cols))
-
     dfx = df_q.dropna(subset=[target_col]).copy()
     if len(dfx) < (min_train + 2):
         return None
-
     preds, actuals, dates = [], [], []
     for i in range(min_train, len(dfx)):
         train = dfx.iloc[:i].dropna(subset=use_cols + [target_col]).copy()
         test = dfx.iloc[i:i+1].dropna(subset=use_cols + [target_col]).copy()
         if len(train) < min_train or len(test) != 1:
             continue
-
         pipe.fit(train[use_cols], train[target_col])
         y_pred = float(pipe.predict(test[use_cols])[0])
         y_true = float(test[target_col].iloc[0])
-
         preds.append(y_pred)
         actuals.append(y_true)
         dates.append(test["Date"].iloc[0])
-
     if len(preds) < 2:
         return None
-
     mae = mean_absolute_error(actuals, preds)
     rmse = math.sqrt(mean_squared_error(actuals, preds))
     mape_val = mape(actuals, preds)
     out = pd.DataFrame({"Date": dates, "Actual": actuals, "Predicted": preds}).sort_values("Date")
     return {"series": out, "mae": mae, "rmse": rmse, "mape": mape_val}
-
-
+# Train on all available data and forecast the next quarter's value
+# by constructing a synthetic "next row" with incremented time index and quarter
 def fit_and_forecast_next(df_q: pd.DataFrame, target_col: str):
     pipe = build_model()
     use_cols = [c for c in FEATURE_COLS if c in df_q.columns] + ["Quarter"]
     use_cols = list(dict.fromkeys(use_cols))
-
     dfx = df_q.dropna(subset=[target_col]).dropna(subset=use_cols).copy()
     if len(dfx) < 6:
         return None
-
     pipe.fit(dfx[use_cols], dfx[target_col])
-
     last = df_q.sort_values("Date").iloc[-1].copy()
     next_date = last["Date"] + pd.offsets.QuarterEnd(1)
     next_quarter = int(((int(last["Quarter"]) % 4) + 1))
-
     next_row = last.copy()
     next_row["Date"] = next_date
     next_row["t"] = int(last["t"]) + 1
     next_row["Quarter"] = next_quarter
-
     y_next = float(pipe.predict(pd.DataFrame([next_row])[use_cols])[0])
     return {"next_date": next_date, "next_pred": y_next}
-
-
+# Return a status label ("Healthy", "Watch", or "Needs action") based on
+# how the current DTI compares to the alert threshold
 def status_label(dti, threshold):
     if np.isnan(dti):
         return ("Unknown", "Data incomplete")
@@ -314,185 +362,138 @@ def status_label(dti, threshold):
     if dti >= (threshold * 0.9):
         return ("Watch", "DTI near threshold")
     return ("Healthy", "DTI below threshold")
-
-
+# Generate plain-English recommendations based on the projected DTI ratio
+# and the user's scenario lever settings (revenue growth, OpEx change, liabilities)
 def rule_recommendation(projected_ratio, levers, threshold):
     rev_growth, opex_change, liab_paydown = levers
     msgs = []
-
     if projected_ratio is None or np.isnan(projected_ratio) or projected_ratio <= 0:
         return ["Check inputs: projected ratio is invalid."]
-
     if projected_ratio >= 2.0:
         msgs.append("Prioritize liability reduction/refinancing and revenue quality (higher-margin, longer-term contracts).")
     elif projected_ratio >= threshold:
         msgs.append("Combine revenue growth with disciplined cost controls and a liability strategy to bring DTI below threshold.")
     else:
         msgs.append("Maintain discipline: keep liabilities from outpacing revenue and avoid over-leveraging expansions.")
-
     if opex_change > 0 and projected_ratio >= threshold:
         msgs.append("OpEx increases while DTI is high—consider freezing discretionary spend until DTI improves.")
-
     if rev_growth < 5 and projected_ratio >= threshold:
         msgs.append("Revenue growth assumption is modest—focus on utilization, pricing, and enterprise commitments.")
-
     if liab_paydown < 2 and projected_ratio >= threshold:
         msgs.append("Low liabilities improvement—explore refinancing, term extensions, or targeted paydowns.")
-
     msgs.append(f"Levers: Revenue growth {rev_growth:.1f}%, OpEx change {opex_change:.1f}%, Liabilities improvement {liab_paydown:.1f}%.")
     return msgs
-
-
 # ----------------------------
 # Load data
 # ----------------------------
+# Read the Excel file, clean it, and compute baseline forecasts for the next quarter
 try:
     df_raw = load_data()
     df_all, df_q = prep_df(df_raw)
 except Exception as e:
     st.error(str(e))
     st.stop()
-
 if df_q.empty:
     st.warning("No quarterly rows found (expected Period values starting with Q1..Q4).")
     st.stop()
-
 latest = df_q.sort_values("Date").iloc[-1]
 current_ratio = float(latest.get("Debt_to_Income", np.nan))
-
-# Baseline forecast shared across pages
+# Baseline forecast shared across pages — predict next-quarter revenue and liabilities
 fc_liab = fit_and_forecast_next(df_q, "Total_Liabilities_USD")
 fc_rev = fit_and_forecast_next(df_q, "Revenue_USD")
 base_rev = float(fc_rev["next_pred"]) if fc_rev else np.nan
 base_liab = float(fc_liab["next_pred"]) if fc_liab else np.nan
 base_ratio = safe_div(base_liab, base_rev) if (fc_rev and fc_liab) else np.nan
 next_label = fc_liab["next_date"].strftime("%b %d, %Y") if fc_liab else "Next quarter"
-
 # ----------------------------
 # Sidebar Navigation + Controls
 # ----------------------------
+# Sidebar contains: logo, page navigation radio, DTI threshold slider,
+# backtest training size slider, and a live DTI status indicator
+_NAV_ITEMS = [
+    ("Overview", ":material/monitoring:"),
+    ("Forecast", ":material/trending_up:"),
+    ("Scenario Planner", ":material/science:"),
+    ("3D Viewer", ":material/view_in_ar:"),
+    ("Recommendations & Risks", ":material/warning:"),
+    ("Dictionary", ":material/menu_book:"),
+]
+if "page" not in st.session_state:
+    st.session_state["page"] = "Overview"
 with st.sidebar:
     if os.path.exists(LOGO_PATH):
         st.image(LOGO_PATH, use_container_width=True)
     else:
         st.markdown("<span class='cw-badge'>CoreWeave</span>", unsafe_allow_html=True)
-
-    st.markdown("### Navigation")
-    page = st.radio(
-        "Go to",
-        ["Overview", "Forecast", "Scenario Planner", "3D Viewer", "Recommendations & Risks", "Dictionary"],
-        label_visibility="collapsed",
-    )
-
     st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
-
-def altair_multiline(df_in: pd.DataFrame, x_col: str, y_cols: list[str], title: str, y_title: str = ""):
-    long = df_in[[x_col] + y_cols].melt(id_vars=[x_col], var_name="Series", value_name="Value")
-    chart = (
-        alt.Chart(long)
-        .mark_line(point=True)
-        .encode(
-            x=alt.X(f"{x_col}:T", title="Month"),
-            y=alt.Y("Value:Q", title=y_title),
-            color=alt.Color("Series:N", scale=PALETTE_SCALE, legend=alt.Legend(title="")),
-            tooltip=[alt.Tooltip(f"{x_col}:T", title="Month"), "Series:N", alt.Tooltip("Value:Q", format=",.2f")],
-        )
-        .properties(title=title, height=320)
-        .interactive()
+    for _label, _icon in _NAV_ITEMS:
+        _is_active = st.session_state["page"] == _label
+        if st.button(
+            _label,
+            key=f"nav_{_label}",
+            icon=_icon,
+            use_container_width=True,
+            type="primary" if _is_active else "secondary",
+        ):
+            st.session_state["page"] = _label
+            st.rerun()
+    st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
+    st.markdown("### Controls")
+    ratio_threshold = st.slider(
+        "DTI alert threshold",
+        0.5, 30.0, 1.2, 0.1,
+        help="If DTI exceeds this threshold, the dashboard flags it as requiring mitigation.",
     )
-    return chart
-
-
-def altair_area_stacked(df_in: pd.DataFrame, x_col: str, cols: list[str], title: str, y_title: str = ""):
-    long = df_in[[x_col] + cols].melt(id_vars=[x_col], var_name="Series", value_name="Value")
-    chart = (
-        alt.Chart(long)
-        .mark_area(opacity=0.7, line=True)
-        .encode(
-            x=alt.X(f"{x_col}:T", title="Month"),
-            y=alt.Y("Value:Q", stack="zero", title=y_title),
-            color=alt.Color("Series:N", scale=PALETTE_SCALE, legend=alt.Legend(title="")),
-            tooltip=[alt.Tooltip(f"{x_col}:T", title="Month"), "Series:N", alt.Tooltip("Value:Q", format=",.0f")],
-        )
-        .properties(title=title, height=320)
-        .interactive()
+    backtest_min_train = st.slider(
+        "Backtest min training quarters",
+        4, 12, 6, 1,
+        help="Higher values can stabilize backtests but reduce the number of backtest points.",
     )
-    return chart
-
-
-def altair_bar_grouped(df_in: pd.DataFrame, x_col: str, cols: list[str], title: str, y_title: str = ""):
-    long = df_in[[x_col] + cols].melt(id_vars=[x_col], var_name="Series", value_name="Value")
-    chart = (
-        alt.Chart(long)
-        .mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4)
-        .encode(
-            x=alt.X(f"{x_col}:T", title="Month"),
-            xOffset=alt.XOffset("Series:N"),
-            y=alt.Y("Value:Q", title=y_title),
-            color=alt.Color("Series:N", scale=PALETTE_SCALE, legend=alt.Legend(title="")),
-            tooltip=[alt.Tooltip(f"{x_col}:T", title="Month"), "Series:N", alt.Tooltip("Value:Q", format=",.0f")],
-        )
-        .properties(title=title, height=320)
-        .interactive()
-    )
-
     st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
     status, status_sub = status_label(current_ratio, ratio_threshold)
     st.markdown("### Current status")
     st.write(f"**DTI:** {current_ratio:,.2f}" if not np.isnan(current_ratio) else "**DTI:** —")
     st.write(f"**Status:** {status}")
     st.caption(status_sub)
-
-# Sidebar logo
-_logo_path = Path(__file__).parent / "CoreWeave Logo White.svg"
-if _logo_path.exists():
-    _logo_b64 = base64.b64encode(_logo_path.read_bytes()).decode()
-    st.sidebar.markdown(
-        f'<img src="data:image/svg+xml;base64,{_logo_b64}" style="width:160px;margin-bottom:1.5rem;">',
-        unsafe_allow_html=True,
-    )
-
-st.title("CoreWeave Revenue & Customer Trends Dashboard")
-
+# ----------------------------
+# Main Header + Executive Summary
+# ----------------------------
+# Top-of-page KPI cards visible on every page: current DTI, forecast DTI, threshold, status
+st.markdown("<span class='cw-badge'>Executive Decision Dashboard</span>", unsafe_allow_html=True)
+st.title("Debt-to-Income Strategy Dashboard")
+st.caption("Goal: improve Debt-to-Income (Total Liabilities ÷ Revenue) using forecasts + what-if scenarios.")
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Current DTI", f"{current_ratio:,.2f}" if not np.isnan(current_ratio) else "—")
 k2.metric(f"Baseline Forecast DTI ({next_label})", f"{base_ratio:,.2f}" if not np.isnan(base_ratio) else "—")
 k3.metric("Alert Threshold", f"{ratio_threshold:.2f}")
 k4.metric("Status", status_label(current_ratio, ratio_threshold)[0])
-
 st.markdown("<div class='cw-divider'></div>", unsafe_allow_html=True)
-
-
 # ----------------------------
 # Page renderers
 # ----------------------------
+
+# OVERVIEW PAGE: KPI cards, Revenue vs Liabilities line chart, DTI trend, executive notes
 def render_overview():
     st.subheader("Overview")
-
     current_rev = float(latest.get("Revenue_USD", np.nan))
     current_liab = float(latest.get("Total_Liabilities_USD", np.nan))
     current_opinc = float(latest.get("Operating_Income_USD", np.nan))
-
     a, b, c, d = st.columns(4)
     a.metric("Latest Quarterly Revenue", money(current_rev))
     b.metric("Latest Total Liabilities", money(current_liab))
     c.metric("Debt-to-Income", f"{current_ratio:,.2f}" if not np.isnan(current_ratio) else "—")
     d.metric("Operating Income", money(current_opinc))
-
     left, right = st.columns([2, 1])
-
     with left:
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=df_q["Date"], y=df_q["Revenue_USD"], mode="lines+markers", name="Revenue"))
         fig.add_trace(go.Scatter(x=df_q["Date"], y=df_q["Total_Liabilities_USD"], mode="lines+markers", name="Total Liabilities"))
-        fig.update_layout(title="Revenue vs Total Liabilities (Quarterly)", template="plotly_dark", height=420)
+        fig.update_layout(title="Revenue vs Total Liabilities (Quarterly)", template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=420, **_AXIS_STYLE)
         st.plotly_chart(fig, use_container_width=True)
-
         fig2 = px.line(df_q, x="Date", y="Debt_to_Income", title="Debt-to-Income Trend (Liabilities ÷ Revenue)")
-        fig2.update_layout(template="plotly_dark", height=360)
+        fig2.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=360, **_AXIS_STYLE)
         fig2.add_hline(y=ratio_threshold, line_dash="dash", annotation_text="Alert threshold")
         st.plotly_chart(fig2, use_container_width=True)
-
     with right:
         st.markdown("<div class='cw-card'>", unsafe_allow_html=True)
         st.markdown("### Executive notes")
@@ -521,7 +522,6 @@ def render_overview():
                 height=340,
             )
         st.markdown("</div>", unsafe_allow_html=True)
-
     csv = df_q.to_csv(index=False).encode("utf-8")
     st.download_button(
         "Download cleaned quarterly dataset (CSV)",
@@ -529,69 +529,56 @@ def render_overview():
         file_name="coreweave_quarterly_clean.csv",
         mime="text/csv",
     )
-
-
+# FORECAST PAGE: next-quarter baseline predictions with walk-forward backtest charts
 def render_forecast():
     st.subheader("Forecast")
-
     left, right = st.columns([1, 3], vertical_alignment="top")
-
     with left:
         st.markdown("<div class='cw-card'>", unsafe_allow_html=True)
         st.markdown("### How to use")
         st.write("Directional baseline forecast for next quarter.")
         st.write("Use Scenario Planner to test interventions.")
         st.markdown("---")
-
         st.markdown("### Baseline next quarter")
         st.metric("Forecast Revenue", money(base_rev))
         st.metric("Forecast Liabilities", money(base_liab))
         st.metric("Forecast DTI", f"{base_ratio:,.2f}" if not np.isnan(base_ratio) else "—")
-
         st.markdown("---")
         bt_liab = time_series_backtest(df_q, "Total_Liabilities_USD", min_train=backtest_min_train)
         bt_rev = time_series_backtest(df_q, "Revenue_USD", min_train=backtest_min_train)
-
         st.markdown("### Reliability")
         st.metric("Revenue MAPE", pct(bt_rev["mape"]) if bt_rev else "—")
         st.metric("Liabilities MAPE", pct(bt_liab["mape"]) if bt_liab else "—")
         st.caption("MAPE = average percent error.")
         st.markdown("</div>", unsafe_allow_html=True)
-
     with right:
         bt_liab = time_series_backtest(df_q, "Total_Liabilities_USD", min_train=backtest_min_train)
         bt_rev = time_series_backtest(df_q, "Revenue_USD", min_train=backtest_min_train)
-
         if bt_rev:
             s = bt_rev["series"]
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=s["Date"], y=s["Actual"], mode="lines+markers", name="Actual"))
             fig.add_trace(go.Scatter(x=s["Date"], y=s["Predicted"], mode="lines+markers", name="Predicted"))
-            fig.update_layout(title="Backtest: Revenue (Actual vs Predicted)", template="plotly_dark", height=380)
+            fig.update_layout(title="Backtest: Revenue (Actual vs Predicted)", template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=380, **_AXIS_STYLE)
             st.plotly_chart(fig, use_container_width=True)
-
         if bt_liab:
             s = bt_liab["series"]
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=s["Date"], y=s["Actual"], mode="lines+markers", name="Actual"))
             fig.add_trace(go.Scatter(x=s["Date"], y=s["Predicted"], mode="lines+markers", name="Predicted"))
-            fig.update_layout(title="Backtest: Total Liabilities (Actual vs Predicted)", template="plotly_dark", height=380)
+            fig.update_layout(title="Backtest: Total Liabilities (Actual vs Predicted)", template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=380, **_AXIS_STYLE)
             st.plotly_chart(fig, use_container_width=True)
-
-
+# SCENARIO PLANNER PAGE: "If X, then Y" — adjust revenue growth, OpEx, and
+# liability levers to see projected DTI with a gauge chart and bar comparison
 def render_scenario_planner():
     st.subheader("Scenario Planner (If X, then Y)")
-
     if np.isnan(base_rev) or np.isnan(base_liab) or np.isnan(base_ratio):
         st.warning("Baseline forecasts are unavailable (not enough clean data).")
         return
-
     left, right = st.columns([1, 3], vertical_alignment="top")
-
     with left:
         st.markdown("<div class='cw-card'>", unsafe_allow_html=True)
         st.markdown("### Scenario inputs")
-
         p1, p2, p3 = st.columns(3)
         if p1.button("Conservative", use_container_width=True):
             st.session_state.rev_growth = 8.0
@@ -605,50 +592,40 @@ def render_scenario_planner():
             st.session_state.rev_growth = 25.0
             st.session_state.opex_change = -12.0
             st.session_state.liab_paydown = 12.0
-
         rev_growth = st.slider("Revenue growth (%)", -10.0, 60.0, float(st.session_state.get("rev_growth", 15.0)), 0.5)
         opex_change = st.slider("OpEx change (%)", -40.0, 20.0, float(st.session_state.get("opex_change", -8.0)), 0.5)
         liab_paydown = st.slider("Liabilities improvement (%)", 0.0, 30.0, float(st.session_state.get("liab_paydown", 8.0)), 0.5)
-
         proj_rev = base_rev * (1.0 + rev_growth / 100.0)
         opex_factor = 1.0 - (max(0.0, -opex_change) / 100.0) * 0.10
         proj_liab = base_liab * (1.0 - liab_paydown / 100.0) * opex_factor
         proj_ratio = safe_div(proj_liab, proj_rev)
-
         st.markdown("---")
         st.markdown("### Scenario output")
         st.metric(f"Scenario DTI ({next_label})", f"{proj_ratio:,.2f}" if not np.isnan(proj_ratio) else "—")
         delta = proj_ratio - base_ratio if not (np.isnan(proj_ratio) or np.isnan(base_ratio)) else np.nan
         st.metric("Change vs baseline", f"{delta:+.2f}" if not np.isnan(delta) else "—")
-
         scen_status, scen_sub = status_label(proj_ratio, ratio_threshold)
         st.write(f"**Status:** {scen_status}")
         st.caption(scen_sub)
-
         st.markdown("---")
         st.markdown("### Recommendations")
         recs = rule_recommendation(proj_ratio, (rev_growth, opex_change, liab_paydown), ratio_threshold)
         for r in recs[:3]:
             st.write(f"• {r}")
-
         st.markdown("</div>", unsafe_allow_html=True)
-
     with right:
         st.markdown("### If X, then Y")
         st.markdown(
             f"""
-            **If** revenue grows by **{rev_growth:.1f}%**, OpEx changes by **{opex_change:.1f}%**, and liabilities improve by **{liab_paydown:.1f}%**,  
+            **If** revenue grows by **{rev_growth:.1f}%**, OpEx changes by **{opex_change:.1f}%**, and liabilities improve by **{liab_paydown:.1f}%**,
             **then** next-quarter Debt-to-Income is projected to be **{proj_ratio:.2f}** (baseline: **{base_ratio:.2f}**).
             """
         )
-
         d1, d2, d3 = st.columns(3)
         d1.metric("Scenario Revenue", money(proj_rev), money(proj_rev - base_rev))
         d2.metric("Scenario Liabilities", money(proj_liab), money(proj_liab - base_liab))
         d3.metric("Scenario DTI", f"{proj_ratio:,.2f}" if not np.isnan(proj_ratio) else "—", f"{delta:+.2f}" if not np.isnan(delta) else None)
-
         gcol, bcol = st.columns([1, 1])
-
         with gcol:
             gauge = go.Figure(go.Indicator(
                 mode="gauge+number",
@@ -664,55 +641,108 @@ def render_scenario_planner():
                     ],
                 },
             ))
-            gauge.update_layout(template="plotly_dark", height=320)
+            gauge.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=320, **_AXIS_STYLE)
             st.plotly_chart(gauge, use_container_width=True)
-
         with bcol:
             compare = pd.DataFrame({"Type": ["Baseline", "Scenario"], "Debt-to-Income": [base_ratio, proj_ratio]})
             fig = px.bar(compare, x="Type", y="Debt-to-Income", title="Baseline vs Scenario DTI")
-            fig.update_layout(template="plotly_dark", height=320)
+            fig.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=320, **_AXIS_STYLE)
             fig.add_hline(y=ratio_threshold, line_dash="dash", annotation_text="Threshold")
             st.plotly_chart(fig, use_container_width=True)
-
-
+# 3D VIEWER PAGE: loads FBX model files from ./models and renders them
+# in-browser using Three.js embedded in a Streamlit HTML component
 def render_3d_viewer():
     st.subheader("Data Center 3D Viewer")
-
     _fbx_files = {p.stem: p for p in sorted(MODELS_DIR.glob("*.fbx"))} if MODELS_DIR.exists() else {}
-
     if _fbx_files:
         selected_model = st.selectbox("Select Data Center", options=list(_fbx_files.keys()))
+        # Two-phase loading: on model change, show overlay immediately (no file I/O),
+        # then rerun to actually load the model with the iframe's built-in loading indicator.
+        if "viewer_model" not in st.session_state:
+            st.session_state.viewer_model = None
+        _model_changed = selected_model != st.session_state.viewer_model
+        if _model_changed:
+            st.session_state.viewer_model = selected_model
+            st.markdown("""
+            <div style="
+                background: #000; display: flex; flex-direction: column;
+                align-items: center; justify-content: center;
+                height: 640px; border-radius: 0.5rem;
+            ">
+                <div style="display:flex;justify-content:center;gap:6px;margin-bottom:10px;">
+                    <span class="cw-dot cw-dot-1"></span>
+                    <span class="cw-dot cw-dot-2"></span>
+                    <span class="cw-dot cw-dot-3"></span>
+                </div>
+                <span style="color:rgba(249,250,252,0.6);font-family:sans-serif;font-size:14px;">Loading 3D model...</span>
+            </div>
+            <style>
+                .cw-dot {
+                    width:10px;height:10px;border-radius:50%;
+                    background:rgba(39,65,231,0.85);
+                    animation:cwDotBounce 1.4s ease-in-out infinite both;
+                }
+                .cw-dot-1 { animation-delay:-0.32s; }
+                .cw-dot-2 { animation-delay:-0.16s; }
+                .cw-dot-3 { animation-delay:0s; }
+                @keyframes cwDotBounce {
+                    0%,80%,100% { transform:scale(0.4);opacity:0.4; }
+                    40% { transform:scale(1);opacity:1; }
+                }
+            </style>
+            """, unsafe_allow_html=True)
+            st.rerun()
         fbx_b64 = base64.b64encode(_fbx_files[selected_model].read_bytes()).decode()
-
         threejs_html = """
         <!DOCTYPE html>
         <html>
         <head>
         <style>
-          body { margin: 0; overflow: hidden; background: #000; }
-          canvas { display: block; width: 100%%; height: 100%%; }
+          html, body { margin: 0; overflow: hidden; background: #000; width: 100%; height: 100%; }
+          canvas { display: block; width: 100%; height: 100%; }
           #loading {
-            position: absolute; top: 50%%; left: 50%%;
-            transform: translate(-50%%, -50%%);
-            color: rgba(249,250,252,0.6); font-family: sans-serif;
-            font-size: 14px;
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            background: #000;
+            z-index: 20;
+          }
+          .dot-loader {
+            display: flex; justify-content: center; gap: 6px;
+            margin-bottom: 10px;
+          }
+          .dot-loader span {
+            width: 10px; height: 10px; border-radius: 50%;
+            background: rgba(39,65,231,0.85);
+            animation: dotBounce 1.4s ease-in-out infinite both;
+          }
+          .dot-loader span:nth-child(1) { animation-delay: -0.32s; }
+          .dot-loader span:nth-child(2) { animation-delay: -0.16s; }
+          .dot-loader span:nth-child(3) { animation-delay: 0s; }
+          @keyframes dotBounce {
+            0%, 80%, 100% { transform: scale(0.4); opacity: 0.4; }
+            40% { transform: scale(1); opacity: 1; }
           }
           #controls-hint {
-            position: absolute; bottom: 12px; left: 50%%;
-            transform: translateX(-50%%);
+            position: absolute; bottom: 12px; left: 50%;
+            transform: translateX(-50%);
             color: rgba(249,250,252,0.45); font-family: sans-serif;
             font-size: 12px; pointer-events: none; user-select: none;
           }
           #error-msg {
-            position: absolute; top: 50%%; left: 50%%;
-            transform: translate(-50%%, -50%%);
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
             color: #FB7185; font-family: sans-serif;
             font-size: 14px; display: none; text-align: center;
           }
         </style>
         </head>
         <body>
-        <div id="loading">Loading 3D model...</div>
+        <div id="loading">
+          <div class="dot-loader"><span></span><span></span><span></span></div>
+          <span style="color:rgba(249,250,252,0.6);font-family:sans-serif;font-size:14px;">Loading 3D model...</span>
+        </div>
         <div id="error-msg"></div>
         <div id="controls-hint">Drag to rotate &middot; Scroll to zoom &middot; Right-drag to pan</div>
         <script>
@@ -737,52 +767,42 @@ def render_3d_viewer():
             document.head.appendChild(s);
           }
           _loadNext();
-
           function _init() {
             try {
               var w = document.body.clientWidth;
               var h = document.body.clientHeight || 580;
-
               var scene = new THREE.Scene();
               scene.background = new THREE.Color(0x000000);
-
               var camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 10000);
               camera.position.set(0, 150, 300);
-
               var renderer = new THREE.WebGLRenderer({ antialias: true });
               renderer.setSize(w, h);
               renderer.setPixelRatio(window.devicePixelRatio);
               renderer.gammaOutput = true;
               renderer.gammaFactor = 2.2;
               document.body.appendChild(renderer.domElement);
-
               scene.add(new THREE.AmbientLight(0xffffff, 1.5));
               scene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 1.0));
-
               var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
               dirLight.position.set(200, 400, 200);
               scene.add(dirLight);
-
               scene.add(new THREE.GridHelper(600, 40, 0x2741E7, 0x111118));
-
               var controls = new THREE.OrbitControls(camera, renderer.domElement);
               controls.enableDamping = true;
               controls.dampingFactor = 0.05;
               controls.rotateSpeed = 0.4;
               controls.zoomSpeed = 0.5;
-              controls.panSpeed = 0.4;
+              controls.panSpeed = 0.15;
               controls.minDistance = 50;
               controls.maxDistance = 2000;
               controls.target.set(0, 50, 0);
               controls.update();
-
               var fbxB64 = "%%FBX_B64%%";
               var raw = atob(fbxB64);
               var bytes = new Uint8Array(raw.length);
               for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
               var blob = new Blob([bytes.buffer]);
               var blobUrl = URL.createObjectURL(blob);
-
               var loader = new THREE.FBXLoader();
               loader.load(blobUrl, function(object) {
                 object.traverse(function(child) {
@@ -808,7 +828,6 @@ def render_3d_viewer():
                     child.material = newMats.length === 1 ? newMats[0] : newMats;
                   }
                 });
-
                 var box = new THREE.Box3().setFromObject(object);
                 var size = box.getSize(new THREE.Vector3());
                 var maxDim = Math.max(size.x, size.y, size.z);
@@ -816,19 +835,15 @@ def render_3d_viewer():
                   var scale = 200 / maxDim;
                   object.scale.multiplyScalar(scale);
                 }
-
                 box.setFromObject(object);
                 var center = box.getCenter(new THREE.Vector3());
                 size = box.getSize(new THREE.Vector3());
                 object.position.sub(center);
                 object.position.y += size.y / 2;
-
                 scene.add(object);
-
                 camera.position.set(250, 180, 250);
                 controls.target.set(0, size.y / 2, 0);
                 controls.update();
-
                 document.getElementById('loading').style.display = 'none';
                 URL.revokeObjectURL(blobUrl);
               }, undefined, function(err) {
@@ -837,7 +852,6 @@ def render_3d_viewer():
                 el.style.display = 'block';
                 el.textContent = 'Failed to load model: ' + (err.message || err);
               });
-
               window.addEventListener('resize', function() {
                 var w2 = document.body.clientWidth;
                 var h2 = document.body.clientHeight || 580;
@@ -845,7 +859,6 @@ def render_3d_viewer():
                 camera.updateProjectionMatrix();
                 renderer.setSize(w2, h2);
               });
-
               function animate() {
                 requestAnimationFrame(animate);
                 controls.update();
@@ -863,18 +876,15 @@ def render_3d_viewer():
         </body>
         </html>
         """
-
         import streamlit.components.v1 as components
         components.html(threejs_html.replace("%%FBX_B64%%", fbx_b64), height=640)
     else:
         st.info("No FBX models found in the models/ directory.")
-
-
+# RECOMMENDATIONS PAGE: context-aware action items based on current DTI status,
+# governance trigger thresholds, and a Revenue vs Liabilities scatter plot
 def render_recommendations():
     st.subheader("Recommendations & Risks")
-
     left, right = st.columns([1, 3], vertical_alignment="top")
-
     with left:
         st.markdown("<div class='cw-card'>", unsafe_allow_html=True)
         st.markdown("### Recommended actions (next 90 days)")
@@ -903,14 +913,12 @@ def render_recommendations():
             ]
         for i in items:
             st.write(f"• {i}")
-
         st.markdown("---")
         st.markdown("### Governance triggers")
         st.write(f"• **Healthy:** DTI < {ratio_threshold*0.9:.2f}")
         st.write(f"• **Watch:** {ratio_threshold*0.9:.2f} ≤ DTI < {ratio_threshold:.2f}")
         st.write(f"• **Needs action:** DTI ≥ {ratio_threshold:.2f}")
         st.markdown("</div>", unsafe_allow_html=True)
-
     with right:
         plot_df = df_q.dropna(subset=["Revenue_USD", "Total_Liabilities_USD", "Debt_to_Income"]).copy()
         if len(plot_df) >= 3:
@@ -922,20 +930,17 @@ def render_recommendations():
                 hover_data=["Period", "Date"],
                 title="Revenue vs Liabilities (colored by DTI)",
             )
-            fig.update_layout(template="plotly_dark", height=520)
+            fig.update_layout(template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", height=520, **_AXIS_STYLE)
             st.plotly_chart(fig, use_container_width=True)
-
         st.markdown("### Uncertainty & limitations")
         st.write("• Data is simulated SEC-style; real-world results can differ.")
         st.write("• Forecasts assume stable relationships; structural breaks (market/financing) reduce accuracy.")
         st.write("• Scenario planner uses transparent business rules; use as decision support, not guarantees.")
-
-
+# DICTIONARY PAGE: glossary of terms, quick-start guide, metric definitions,
+# and explanation of how to use the Scenario Planner
 def render_dictionary():
     st.subheader("Dictionary (What everything means + how to use this dashboard)")
-
     left, right = st.columns([1, 3], vertical_alignment="top")
-
     with left:
         st.markdown("<div class='cw-card'>", unsafe_allow_html=True)
         st.markdown("### Quick Start")
@@ -950,37 +955,28 @@ def render_dictionary():
         st.write("• Lower is better (less liability per $1 of revenue).")
         st.write("• Improve by increasing revenue, reducing liabilities, or both.")
         st.markdown("</div>", unsafe_allow_html=True)
-
     with right:
         st.markdown("## Key terms & metrics")
-
         with st.expander("Debt-to-Income (DTI)", expanded=True):
             st.write("**Definition:** Total Liabilities ÷ Revenue (quarterly).")
-            st.write("DTI = 1.5 means $1.50 of liabilities for every $1.00 of quarterly revenue.")
+            st.write("DTI = 1.5 means 1.50 of liabilities for every 1.00 of quarterly revenue.")
             st.write("Lower is better.")
-
         with st.expander("Revenue (Revenue_USD)", expanded=False):
-            st.write("Top-line quarterly revenue. Increasing revenue improves DTI (it’s the denominator).")
-
+            st.write("Top-line quarterly revenue. Increasing revenue improves DTI (it's the denominator).")
         with st.expander("Total Liabilities (Total_Liabilities_USD)", expanded=False):
-            st.write("All liabilities on the balance sheet. Reducing liabilities improves DTI (it’s the numerator).")
-
+            st.write("All liabilities on the balance sheet. Reducing liabilities improves DTI (it's the numerator).")
         with st.expander("Operating Income (Operating_Income_USD)", expanded=False):
             st.write("Operating profit. Useful signal for ability to pay down liabilities over time.")
-
         with st.expander("Operating Expenses (Total_Operating_Expenses_USD)", expanded=False):
             st.write("Total operating costs. In Scenario Planner, OpEx is a conceptual lever that slightly reduces liability pressure when decreased.")
-
         with st.expander("Forecasting model (Ridge regression)", expanded=False):
             st.write("Simple, explainable model capturing trend + seasonality (quarter indicators).")
             st.write("Used to estimate baseline next-quarter revenue and liabilities.")
-
         with st.expander("Backtest metrics (MAE, RMSE, MAPE)", expanded=False):
             st.write("Walk-forward error metrics (model is tested on past periods).")
             st.write("• **MAE**: average absolute error (in dollars).")
             st.write("• **RMSE**: penalizes large errors more (in dollars).")
             st.write("• **MAPE**: average percent error (easiest to interpret).")
-
         st.markdown("## How to use Scenario Planner (If X, then Y)")
         st.markdown(
             """
@@ -988,14 +984,12 @@ def render_dictionary():
             - **Revenue growth (%)**: your assumption about next-quarter revenue improvement.
             - **OpEx change (%)**: conceptual efficiency lever.
             - **Liabilities improvement (%)**: paydown/refi effect.
-
             **Outputs:**
             - **Scenario DTI** and **Change vs baseline**
             - Dollar impacts for revenue and liabilities
             - Status vs threshold + recommended actions
             """
         )
-
         st.markdown("## Limitations")
         st.markdown(
             """
@@ -1004,288 +998,15 @@ def render_dictionary():
             - Scenario planner is decision support, not a guarantee.
             """
         )
-
-
 # ----------------------------
-# Route
+# Route — render the page selected in the sidebar
 # ----------------------------
-if page == "Overview":
-    render_overview()
-elif page == "Forecast":
-    render_forecast()
-elif page == "Scenario Planner":
-    render_scenario_planner()
-elif page == "3D Viewer":
-    render_3d_viewer()
-elif page == "Recommendations & Risks":
-    render_recommendations()
-else:
-    st.info("Select at least one metric in the sidebar to display the line chart.")
-
-st.subheader("Customer Movement")
-st.altair_chart(
-    altair_bar_grouped(
-        fdf, "Month",
-        ["New_Customers", "Churned_Customers", "Net_Customers"],
-        "New vs Churned vs Net Customers",
-        "Customers"
-    ),
-    use_container_width=True
-)
-
-# Table
-if show_table:
-    st.subheader("Filtered Data Table")
-    st.dataframe(fdf, use_container_width=True, hide_index=True)
-
-# Predictive modeling
-st.divider()
-st.header("Predictive Modeling (Forecast)")
-
-target = st.selectbox(
-    "Select a metric to forecast",
-    options=[
-        "Total_Revenue_USD",
-        "Subscription_Revenue_USD",
-        "API_Revenue_USD",
-        "Units",
-        "New_Customers",
-        "Churned_Customers",
-        "Net_Customers",
-        "Gross_Profit_USD",
-        "Gross_Margin_%",
-    ],
-    index=0,
-)
-
-horizon = st.slider("Forecast horizon (months)", 3, 24, 6)
-alpha = st.slider("Model regularization (alpha)", 0.1, 50.0, 1.0)
-test_months = st.slider("Backtest window (months)", 0, 24, 12)
-
-forecast_df, metrics = fit_forecast(df, target_col=target, horizon=horizon, alpha=alpha, test_months=test_months)
-
-m1, m2, m3 = st.columns(3)
-m1.metric("Backtest months", f"{metrics.get('Backtest_Months', 0)}")
-m2.metric("Backtest MAE", "—" if "MAE" not in metrics else f"{metrics['MAE']:,.0f}")
-mape = metrics.get("MAPE")
-m3.metric("Backtest MAPE", "—" if mape is None else f"{mape:,.2f}%")
-
-st.subheader("Actual vs Fitted vs Forecast")
-
-st.altair_chart(
-    altair_multiline(
-        forecast_df.drop(columns=[], errors="ignore"),
-        "Month",
-        ["Actual", "Fitted", "Forecast"],
-        f"{target}: Actual / Fitted / Forecast",
-        ""
-    ),
-    use_container_width=True
-)
-
-# -----------------------------
-# 3D Data Center Viewer
-# -----------------------------
-st.divider()
-st.header("Data Center 3D Viewer")
-
-_models_dir = Path(__file__).parent / "models"
-_fbx_files = {p.stem: p for p in sorted(_models_dir.glob("*.fbx"))} if _models_dir.exists() else {}
-
-if _fbx_files:
-    selected_model = st.selectbox("Select Data Center", options=list(_fbx_files.keys()))
-    fbx_b64 = base64.b64encode(_fbx_files[selected_model].read_bytes()).decode()
-
-    threejs_html = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-    <style>
-      body { margin: 0; overflow: hidden; background: #000; }
-      canvas { display: block; width: 100%%; height: 100%%; }
-      #loading {
-        position: absolute; top: 50%%; left: 50%%;
-        transform: translate(-50%%, -50%%);
-        color: rgba(249,250,252,0.6); font-family: sans-serif;
-        font-size: 14px;
-      }
-      #controls-hint {
-        position: absolute; bottom: 12px; left: 50%%;
-        transform: translateX(-50%%);
-        color: rgba(249,250,252,0.45); font-family: sans-serif;
-        font-size: 12px; pointer-events: none; user-select: none;
-      }
-      #error-msg {
-        position: absolute; top: 50%%; left: 50%%;
-        transform: translate(-50%%, -50%%);
-        color: #FB7185; font-family: sans-serif;
-        font-size: 14px; display: none; text-align: center;
-      }
-    </style>
-    </head>
-    <body>
-    <div id="loading">Loading 3D model...</div>
-    <div id="error-msg"></div>
-    <div id="controls-hint">Drag to rotate &middot; Scroll to zoom &middot; Right-drag to pan</div>
-    <script>
-      var _scripts = [
-        "https://unpkg.com/three@0.99.0/build/three.min.js",
-        "https://unpkg.com/three@0.99.0/examples/js/libs/inflate.min.js",
-        "https://unpkg.com/three@0.99.0/examples/js/controls/OrbitControls.js",
-        "https://unpkg.com/three@0.99.0/examples/js/loaders/FBXLoader.js"
-      ];
-      var _loaded = 0;
-      function _loadNext() {
-        if (_loaded >= _scripts.length) { _init(); return; }
-        var s = document.createElement('script');
-        s.src = _scripts[_loaded];
-        s.onload = function() { _loaded++; _loadNext(); };
-        s.onerror = function() {
-          document.getElementById('loading').style.display = 'none';
-          var el = document.getElementById('error-msg');
-          el.style.display = 'block';
-          el.textContent = 'Failed to load: ' + _scripts[_loaded];
-        };
-        document.head.appendChild(s);
-      }
-      _loadNext();
-
-      function _init() {
-        try {
-          var w = document.body.clientWidth;
-          var h = document.body.clientHeight || 580;
-
-          var scene = new THREE.Scene();
-          scene.background = new THREE.Color(0x000000);
-
-          var camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 10000);
-          camera.position.set(0, 150, 300);
-
-          var renderer = new THREE.WebGLRenderer({ antialias: true });
-          renderer.setSize(w, h);
-          renderer.setPixelRatio(window.devicePixelRatio);
-          renderer.gammaOutput = true;
-          renderer.gammaFactor = 2.2;
-          document.body.appendChild(renderer.domElement);
-
-          // Lighting — bright even illumination for textured models
-          scene.add(new THREE.AmbientLight(0xffffff, 1.5));
-          scene.add(new THREE.HemisphereLight(0xffffff, 0x666666, 1.0));
-
-          var dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-          dirLight.position.set(200, 400, 200);
-          scene.add(dirLight);
-
-          // Grid
-          scene.add(new THREE.GridHelper(600, 40, 0x2741E7, 0x111118));
-
-          // Controls
-          var controls = new THREE.OrbitControls(camera, renderer.domElement);
-          controls.enableDamping = true;
-          controls.dampingFactor = 0.05;
-          controls.rotateSpeed = 0.4;
-          controls.zoomSpeed = 0.5;
-          controls.panSpeed = 0.4;
-          controls.minDistance = 50;
-          controls.maxDistance = 2000;
-          controls.target.set(0, 50, 0);
-          controls.update();
-
-          // Load FBX from base64
-          var fbxB64 = "%%FBX_B64%%";
-          var raw = atob(fbxB64);
-          var bytes = new Uint8Array(raw.length);
-          for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-          var blob = new Blob([bytes.buffer]);
-          var blobUrl = URL.createObjectURL(blob);
-
-          var loader = new THREE.FBXLoader();
-          loader.load(blobUrl, function(object) {
-            // Replace all materials with MeshBasicMaterial (no lighting needed)
-            // Preserve textures, vertex colors, or use fallback grey
-            object.traverse(function(child) {
-              if (child instanceof THREE.Mesh) {
-                if (child.geometry) child.geometry.computeVertexNormals();
-                var geo = child.geometry;
-                var hasVC = geo && geo.attributes && geo.attributes.color;
-                var mats = Array.isArray(child.material) ? child.material : [child.material];
-                var newMats = mats.map(function(m) {
-                  var opts = { side: THREE.DoubleSide };
-                  if (m.map) {
-                    opts.map = m.map;
-                    opts.color = new THREE.Color(0xffffff);
-                  } else if (hasVC) {
-                    opts.vertexColors = THREE.VertexColors;
-                    opts.color = new THREE.Color(0xffffff);
-                  } else {
-                    opts.color = (m.color && (m.color.r + m.color.g + m.color.b) > 0.05)
-                      ? m.color : new THREE.Color(0xaaaaaa);
-                  }
-                  return new THREE.MeshBasicMaterial(opts);
-                });
-                child.material = newMats.length === 1 ? newMats[0] : newMats;
-              }
-            });
-
-            // Normalize model to ~200 units regardless of original scale
-            var box = new THREE.Box3().setFromObject(object);
-            var size = box.getSize(new THREE.Vector3());
-            var maxDim = Math.max(size.x, size.y, size.z);
-            if (maxDim > 0) {
-              var scale = 200 / maxDim;
-              object.scale.multiplyScalar(scale);
-            }
-
-            // Recompute after scaling
-            box.setFromObject(object);
-            var center = box.getCenter(new THREE.Vector3());
-            size = box.getSize(new THREE.Vector3());
-            object.position.sub(center);
-            object.position.y += size.y / 2;
-
-            scene.add(object);
-
-            camera.position.set(250, 180, 250);
-            controls.target.set(0, size.y / 2, 0);
-            controls.update();
-
-            document.getElementById('loading').style.display = 'none';
-            URL.revokeObjectURL(blobUrl);
-          }, undefined, function(err) {
-            document.getElementById('loading').style.display = 'none';
-            var el = document.getElementById('error-msg');
-            el.style.display = 'block';
-            el.textContent = 'Failed to load model: ' + (err.message || err);
-          });
-
-          window.addEventListener('resize', function() {
-            var w2 = document.body.clientWidth;
-            var h2 = document.body.clientHeight || 580;
-            camera.aspect = w2 / h2;
-            camera.updateProjectionMatrix();
-            renderer.setSize(w2, h2);
-          });
-
-          function animate() {
-            requestAnimationFrame(animate);
-            controls.update();
-            renderer.render(scene, camera);
-          }
-          animate();
-        } catch(e) {
-          document.getElementById('loading').style.display = 'none';
-          var el = document.getElementById('error-msg');
-          el.style.display = 'block';
-          el.textContent = 'Error: ' + e.message;
-        }
-      }
-    </script>
-    </body>
-    </html>
-    """
-
-    import streamlit.components.v1 as components
-    components.html(threejs_html.replace("%%FBX_B64%%", fbx_b64), height=600)
-else:
-    st.info("No FBX models found in the models/ directory.")
-
+_PAGE_MAP = {
+    "Overview": render_overview,
+    "Forecast": render_forecast,
+    "Scenario Planner": render_scenario_planner,
+    "3D Viewer": render_3d_viewer,
+    "Recommendations & Risks": render_recommendations,
+    "Dictionary": render_dictionary,
+}
+_PAGE_MAP[st.session_state["page"]]()
