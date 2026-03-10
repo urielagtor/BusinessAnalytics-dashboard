@@ -17,8 +17,9 @@ A comprehensive revenue and customer analytics dashboard built with Streamlit, f
 - streamlit
 - pandas
 - numpy
-- plotly
+- openpyxl
 - scikit-learn
+- plotly
 - altair
 
 ## Installation
